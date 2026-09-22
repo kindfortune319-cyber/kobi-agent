@@ -8,7 +8,11 @@ from openai import OpenAI
 from docx import Document
 
 # Настройка страницы
-st.set_page_config(page_title="Kobi — AI Platform", page_icon="🤖", layout="wide")
+st.set_page_config(
+    page_title="Kobi — AI Platform", 
+    page_icon="🤖", 
+    layout="wide"
+)
 
 MASTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
 
@@ -52,9 +56,11 @@ with st.sidebar:
             "anthropic/claude-3-haiku",
             "anthropic/claude-3.5-sonnet"
         ],
-        format_func=lambda x: f"⚡ Gemini Flash 1.5 (Лучшая для голоса)" if "gemini" in x else 
-                             (f"🚀 DeepSeek Chat" if "deepseek" in x else
-                              (f"🍃 Claude 3 Haiku" if "haiku" in x else f"👑 Claude 3.5 Sonnet (Премиум)"))
+        format_func=lambda x: (
+            "⚡ Gemini Flash 1.5 (Лучшая для голоса)" if "gemini" in x else 
+            ("🚀 DeepSeek Chat" if "deepseek" in x else
+             ("🍃 Claude 3 Haiku" if "haiku" in x else "👑 Claude 3.5 Sonnet (Премиум)"))
+        )
     )
 
 messages_list = st.session_state.chats[st.session_state.current_chat]
@@ -83,7 +89,11 @@ for message in messages_list:
         if "file_path" in message and os.path.exists(message["file_path"]):
             with open(message["file_path"], "rb") as f:
                 file_name = os.path.basename(message['file_path'])
-                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_name.endswith(".xlsx") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                mime_type = (
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
+                    if file_name.endswith(".xlsx") else 
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
                 st.download_button(
                     label=f"📥 Скачать файл: {file_name}",
                     data=f,
@@ -114,7 +124,10 @@ if audio_value:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "Напиши дословно текст того, что пользователь сказал в этом голосовом сообщении. Выведи только распознанный текст без лишних комментариев."},
+                            {
+                                "type": "text", 
+                                "text": "Напиши дословно текст того, что пользователь сказал в этом голосовом сообщении. Выведи только распознанный текст без лишних комментариев."
+                            },
                             {
                                 "type": "image_url",
                                 "image_url": {"url": f"data:audio/wav;base64,{audio_base64}"}
@@ -192,4 +205,53 @@ if prompt:
                 parts = full_reply.split("```csv")
                 reply_text = parts[0].replace("[EXCEL]", "").strip()
                 if len(parts) > 1:
-                    csv_data = parts[1].split("
+                    sub_parts = parts[1].split("```")
+                    csv_data = sub_parts[0].strip()
+            elif "[PDF]" in full_reply:
+                skill_tag = "[PDF]"
+                reply_text = full_reply.replace("[PDF]", "").strip()
+            elif "[TEXT]" in full_reply:
+                skill_tag = "[TEXT]"
+                reply_text = full_reply.replace("[TEXT]", "").strip()
+
+            file_path = None
+            if skill_tag == "[EXCEL]" and csv_data:
+                status.update(label="Компилирую Excel-файл...", state="running")
+                file_path = "Коммерческий_отчет_Kobi.xlsx"
+                try:
+                    df = pd.read_csv(io.StringIO(csv_data), sep=None, engine='python')
+                    df.to_excel(file_path, index=False)
+                except Exception:
+                    df = pd.DataFrame([["Ошибка", "Не удалось распарсить CSV"]])
+                    df.to_excel(file_path, index=False)
+            elif skill_tag == "[PDF]":
+                status.update(label="Генерация Word-документа...", state="running")
+                file_path = "Kobi_Document.docx"
+                word_buffer = generate_word_report("Документ от Kobi AI", reply_text)
+                with open(file_path, "wb") as f:
+                    f.write(word_buffer.getbuffer())
+
+            status.update(label="Готово!", state="complete", expanded=False)
+
+        st.markdown(reply_text)
+        
+        if file_path and os.path.exists(file_path):
+            file_name = os.path.basename(file_path)
+            mime_type = (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
+                if file_name.endswith(".xlsx") else 
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            with open(file_path, "rb") as f:
+                st.download_button(
+                    label=f"📥 Скачать файл: {file_name}",
+                    data=f,
+                    file_name=file_name,
+                    mime=mime_type,
+                    key=f"new_{file_path}_{os.path.getmtime(file_path)}"
+                )
+            messages_list.append({"role": "assistant", "content": reply_text, "file_path": file_path})
+        else:
+            messages_list.append({"role": "assistant", "content": reply_text})
+        
+        st.rerun()
