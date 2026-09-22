@@ -1,7 +1,8 @@
 import os
 import io
 import json
-import urllib.parse
+import base64
+import requests
 import concurrent.futures
 import contextlib
 import streamlit as st
@@ -29,7 +30,7 @@ if "current_chat" not in st.session_state:
 # --- БОКОВАЯ ПАНЕЛЬ ---
 with st.sidebar:
     st.markdown("### 🤖 Kobi Supreme Agent")
-    st.info("💡 Режим: Истинный Мульти-Модельный Консенсус + Flux.1 Фотореализм + Python Sandbox.")
+    st.info("💡 Режим: Мульти-Модельный Консенсус + Flux.1 Native API + Python Sandbox.")
     
     if st.button("➕ Новый чат", use_container_width=True):
         new_name = f"Диалог #{len(st.session_state.chats) + 1}"
@@ -70,9 +71,9 @@ with st.sidebar:
 messages_list = st.session_state.chats[st.session_state.current_chat]
 
 st.title("🤖 Kobi — Мульти-агентный комплекс (Supreme Consensus)")
-st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Движок генерации фото: **FLUX.1 Photorealism**")
+st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Движок фото: **OpenRouter FLUX.1 Schnell**")
 
-# --- ИНСТРУМЕНТЫ АГЕНТА ---
+# --- ИНСТРУМЕНТЫ АГЕНТА (Исправлены схемы под строгий стандарт OpenAI) ---
 tools = [
     {
         "type": "function",
@@ -95,7 +96,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "generate_image",
-            "description": "Генерирует высококачественное фотореалистичное изображение через нейросеть Flux.1.",
+            "description": "Генерирует фотореалистичное изображение через официальный движок Flux.1 на OpenRouter.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -120,7 +121,10 @@ tools = [
                         "type": "string",
                         "description": "Валидный Python код."
                     },
-                    "description": "Описание задачи."
+                    "description": {
+                        "type": "string",
+                        "description": "Описание задачи."
+                    }
                 },
                 "required": ["code"]
             }
@@ -161,12 +165,36 @@ def search_web(query: str) -> str:
     return json.dumps(results, ensure_ascii=False)
 
 def generate_image(prompt: str) -> str:
-    # Улучшение промпта для Flux.1 фотореализма
-    enhanced_prompt = f"{prompt}, highly detailed, 8k resolution, photorealistic, professional lighting, masterpiece"
-    encoded = urllib.parse.quote(enhanced_prompt)
-    # Используем модель Flux.1 с отключением логотипа
-    image_url = f"https://image.pollinations.ai/prompt/{encoded}?model=flux&width=1024&height=1024&nologo=true&seed=42"
-    return json.dumps({"status": "success", "image_url": image_url, "prompt": prompt}, ensure_ascii=False)
+    enhanced_prompt = f"{prompt}, highly detailed, 8k resolution, photorealistic, professional sports photography, perfect anatomy, masterpiece"
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/images",
+            headers={
+                "Authorization": f"Bearer {MASTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://kobi-agent.streamlit.app",
+                "X-Title": "Kobi Supreme Agent"
+            },
+            json={
+                "model": "black-forest-labs/flux-1-schnell",
+                "prompt": enhanced_prompt,
+                "aspect_ratio": "16:9"
+            }
+        )
+        if response.status_code == 200:
+            res_data = response.json()
+            if "data" in res_data and len(res_data["data"]) > 0:
+                item = res_data["data"][0]
+                if "b64_json" in item:
+                    img_bytes = base64.b64decode(item["b64_json"])
+                    file_name = f"flux_gen_{os.urandom(4).hex()}.png"
+                    with open(file_name, "wb") as f:
+                        f.write(img_bytes)
+                    return json.dumps({"status": "success", "file_path": file_name, "prompt": prompt}, ensure_ascii=False)
+        
+        return json.dumps({"status": "error", "error_message": f"OpenRouter Image API Error: {response.text}"}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "error_message": str(e)}, ensure_ascii=False)
 
 def execute_python_code(code: str, description: str = "") -> str:
     output_buffer = io.StringIO()
@@ -243,9 +271,8 @@ if prompt:
                 "Ты — Kobi, коммерческий ИИ-агент высшего класса.\n"
                 "Инструменты:\n"
                 "- search_web: поиск информации и ссылок.\n"
-                "- generate_image: создание высококачественных фото на движке Flux.1 (переводи промпт на английский).\n"
-                "- execute_python_code: вычисления и работа с изображениями/файлами.\n"
-                "Выдавай только структурированный, коммерчески готовый результат."
+                "- generate_image: создание фото на Flux.1 через официальный API OpenRouter.\n"
+                "- execute_python_code: вычисления и работа с файлами."
             )
             
             api_messages = [{"role": "system", "content": system_prompt}]
@@ -262,7 +289,6 @@ if prompt:
 
             final_reply = ""
             latest_file_path = None
-            generated_image_url = None
 
             try:
                 # --- ЛОГИКА МУЛЬТИ-МОДЕЛЬНОГО КОНСЕНСУСА ---
@@ -297,7 +323,6 @@ if prompt:
                             if msg:
                                 responses_map[label] = msg
 
-                    # Проверяем, есть ли вызовы инструментов хотя бы у одной модели
                     tool_call_msg = None
                     for label, msg in responses_map.items():
                         if msg and msg.tool_calls:
@@ -305,10 +330,8 @@ if prompt:
                             break
 
                     if tool_call_msg:
-                        # Если требуется выполнение инструмента (поиск/картинка/код)
                         response_message = tool_call_msg
                     else:
-                        # ИСТИННЫЙ КОНСЕНСУС ТЕКСТА: собираем мнения всех сетей и просим DeepSeek их синтезировать
                         status.update(label="👑 [Консенсус]: Мастер-синтез лучших идей всех моделей...", state="running")
                         opinions_text = "\n\n".join([
                             f"--- Вариант от {lbl} ---\n{msg.content if msg.content else 'Нет ответа'}"
@@ -329,7 +352,6 @@ if prompt:
                         response_message = synth_res.choices[0].message
 
                 else:
-                    # Одиночный режим
                     res = client.chat.completions.create(
                         model=model_choice,
                         messages=api_messages,
@@ -363,11 +385,8 @@ if prompt:
                             
                             try:
                                 out_json = json.loads(tool_output)
-                                if isinstance(out_json, dict):
-                                    if out_json.get("image_url"):
-                                        generated_image_url = out_json["image_url"]
-                                    if out_json.get("files"):
-                                        latest_file_path = out_json["files"][-1]
+                                if isinstance(out_json, dict) and out_json.get("file_path"):
+                                    latest_file_path = out_json["file_path"]
                             except:
                                 pass
 
@@ -405,14 +424,11 @@ if prompt:
 
         st.markdown(final_reply)
         
-        if generated_image_url:
-            st.image(generated_image_url, caption="Генерация FLUX.1 Photorealism")
-
         assistant_item = {"role": "assistant", "content": final_reply}
         if latest_file_path and os.path.exists(latest_file_path):
             assistant_item["file_path"] = latest_file_path
             if latest_file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-                st.image(latest_file_path)
+                st.image(latest_file_path, caption="Генерация OpenRouter FLUX.1")
             with open(latest_file_path, "rb") as f:
                 file_name = os.path.basename(latest_file_path)
                 st.download_button(
