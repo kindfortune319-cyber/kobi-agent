@@ -414,7 +414,7 @@ if prompt:
 
             status.update(label="Готово!", state="complete", expanded=False)
 
-        # Авто-экстрактор картинок из текста, если модель скинула markdown-ссылку напрямую
+# Авто-экстрактор картинок из текста, если модель скинула markdown-ссылку напрямую
         if not generated_image_url:
             img_match = re.search(r'!$$.*?$$$(https?://[^\s)]+)$', final_reply)
             if img_match:
