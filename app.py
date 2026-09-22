@@ -17,6 +17,15 @@ st.caption("Профессиональный мультимодельный ас
 # ЖЕСТКО ЗАШИТЫЙ КЛЮЧ ИЗ ОБЛАЧНЫХ СЕКРЕТОВ
 MASTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
 
+# ГАРАНТИРОВАННАЯ ЗАГРУЗКА ШРИФТА ПРИ СТАРТЕ ПРИЛОЖЕНИЯ
+FONT_PATH = "DejaVuSans.ttf"
+if not os.path.exists(FONT_PATH):
+    try:
+        url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+        urllib.request.urlretrieve(url, FONT_PATH)
+    except Exception as e:
+        print(f"Ошибка загрузки шрифта: {e}")
+
 with st.sidebar:
     st.header("⚙️ Панель управления")
     model_choice = st.selectbox(
@@ -30,31 +39,22 @@ def generate_pdf_report(title, content):
     pdf = FPDF()
     pdf.add_page()
     
-    # Надежная загрузка шрифта с поддержкой кириллицы через CDN
-    font_path = "DejaVuSans.ttf"
-    if not os.path.exists(font_path):
-        try:
-            url = "https://cdn.jsdelivr.net/gh/dejavu-fonts/dejavu-fonts@master/ttf/DejaVuSans.ttf"
-            urllib.request.urlretrieve(url, font_path)
-        except Exception as e:
-            print(f"Не удалось скачать шрифт: {e}")
-
-    # Подключаем юникодный шрифт в fpdf2
-    if os.path.exists(font_path):
-        pdf.add_font("DejaVu", fname=font_path)
+    # Подключаем юникодный шрифт
+    if os.path.exists(FONT_PATH):
+        pdf.add_font("DejaVu", fname=FONT_PATH)
         pdf.set_font("DejaVu", size=16)
     else:
-        pdf.set_font("Arial", size=16)
+        pdf.set_font("Helvetica", size=16)
 
     # Заголовок
     pdf.cell(0, 10, txt=title, ln=True)
     pdf.ln(5)
 
     # Текст отчета
-    if os.path.exists(font_path):
+    if os.path.exists(FONT_PATH):
         pdf.set_font("DejaVu", size=10)
     else:
-        pdf.set_font("Arial", size=10)
+        pdf.set_font("Helvetica", size=10)
 
     clean_content = re.sub(r'[*#_`]', '', content)
     
@@ -102,7 +102,7 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.status("Kobi анализирует задачу и формирует структуру...", expanded=True) as status:
+        with st.status("Kobi анализирует задачу и формирует документ...", expanded=True) as status:
             
             client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
