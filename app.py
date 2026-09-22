@@ -39,7 +39,7 @@ def generate_pdf_report(title, content):
     c.setFont("Helvetica", 12)
     text_y = height - 90
     for line in content.split('\n'):
-        if text_y < 50:  # Перенос на новую страницу, если текст длинный
+        if text_y < 50:  # Перенос на новую страницу
             c.showPage()
             c.setFont("Helvetica", 12)
             text_y = height - 50
@@ -125,4 +125,48 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
                 reply_text = parts[0].replace("[EXCEL]", "").strip()
                 if len(parts) > 1:
                     try:
-                        json_str = parts[1].split("
+                        json_part = parts[1].split("```")
+                        json_str = json_part[0].strip()
+                        excel_data = json.loads(json_str)
+                    except Exception:
+                        excel_data = None
+            elif "[PDF]" in full_reply:
+                skill_tag = "[PDF]"
+                reply_text = full_reply.replace("[PDF]", "").strip()
+            elif "[TEXT]" in full_reply:
+                reply_text = full_reply.replace("[TEXT]", "").strip()
+
+            file_path = None
+            if skill_tag == "[EXCEL]" and excel_data:
+                status.update(label="Компилирую персональный Excel-файл...", state="running")
+                file_path = "Коммерческий_отчет_Kobi.xlsx"
+                df = pd.DataFrame(
+                    excel_data.get("rows", []), 
+                    columns=excel_data.get("columns", ["Параметр", "Значение"])
+                )
+                df.to_excel(file_path, index=False)
+            elif skill_tag == "[PDF]":
+                status.update(label="Генерирую официальный PDF-документ...", state="running")
+                file_path = "Kobi_Commercial_Offer.pdf"
+                pdf_buffer = generate_pdf_report("Коммерческий документ от Kobi", reply_text)
+                with open(file_path, "wb") as f:
+                    f.write(pdf_buffer.getbuffer())
+
+            status.update(label="Задача успешно выполнена!", state="complete", expanded=False)
+
+        st.markdown(reply_text)
+        
+        if file_path and os.path.exists(file_path):
+            file_name = os.path.basename(file_path)
+            mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_name.endswith(".xlsx") else "application/pdf"
+            with open(file_path, "rb") as f:
+                st.download_button(
+                    label=f"📥 Скачать готовый файл: {file_name}",
+                    data=f,
+                    file_name=file_name,
+                    mime=mime_type,
+                    key=f"new_{file_path}_{os.path.getmtime(file_path)}"
+                )
+            st.session_state.messages.append({"role": "assistant", "content": reply_text, "file_path": file_path})
+        else:
+            st.session_state.messages.append({"role": "assistant", "content": reply_text})
