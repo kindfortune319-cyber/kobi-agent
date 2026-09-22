@@ -1,5 +1,4 @@
+fpdf2
+openai
 streamlit
 pandas
-openai
-openpyxl
-reportlab
