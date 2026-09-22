@@ -1,22 +1,21 @@
 import os
 import json
+import io
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 # Настройка страницы
 st.set_page_config(page_title="Kobi — Коммерческий AI Агент", page_icon="🤖", layout="wide")
 
-st.markdown("""
-    
-""", unsafe_allow_html=True)
-
 st.title("🤖 Kobi — Автономный Коммерческий Агент")
 st.caption("Профессиональный мультимодельный ассистент для бизнеса.")
 
-# ЖЕСТКО ЗАШИТЫЙ КЛЮЧ (для клиента поле ввода скрыто, ничего вводить не нужно)
-# Можешь вставить сюда свой ключ в кавычках, чтобы он работал постоянно навсегда:
+# ЖЕСТКО ЗАШИТЫЙ КЛЮЧ ИЗ ОБЛАЧНЫХ СЕКРЕТОВ
 MASTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
+
 with st.sidebar:
     st.header("⚙️ Панель управления")
     model_choice = st.selectbox(
@@ -26,29 +25,55 @@ with st.sidebar:
     st.markdown("---")
     st.success("✅ Система подключена и готова к работе.")
 
+# Функция создания PDF-документа
+def generate_pdf_report(title, content):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    
+    # Заголовок
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, height - 50, title)
+    
+    # Текст отчета
+    c.setFont("Helvetica", 12)
+    text_y = height - 90
+    for line in content.split('\n'):
+        if text_y < 50:  # Перенос на новую страницу, если текст длинный
+            c.showPage()
+            c.setFont("Helvetica", 12)
+            text_y = height - 50
+        c.drawString(50, text_y, line)
+        text_y -= 20
+        
+    c.save()
+    buffer.seek(0)
+    return buffer
+
 # Инициализация истории чата
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Вывод истории
+# Вывод истории сообщений
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if "file_path" in message and os.path.exists(message["file_path"]):
             with open(message["file_path"], "rb") as f:
                 file_name = os.path.basename(message['file_path'])
+                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_name.endswith(".xlsx") else "application/pdf"
                 st.download_button(
                     label=f"📥 Скачать файл: {file_name}",
                     data=f,
                     file_name=file_name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    mime=mime_type,
                     key=f"hist_{message['file_path']}_{os.path.getmtime(message['file_path'])}"
                 )
 
-# Обработка ввода
-if prompt := st.chat_input("Какую задачу нужно решить? (например: 'Сделай смету расходов на офис')"):
+# Обработка ввода пользователя
+if prompt := st.chat_input("Какую задачу нужно решить? (например: 'Сделай смету' или 'Напиши КП в PDF')"):
     if not MASTER_API_KEY or MASTER_API_KEY.startswith("sk-or-v1-..."):
-        st.error("Пожалуйста, укажи свой реальный OpenRouter API-ключ в переменной MASTER_API_KEY внутри кода app.py.")
+        st.error("Пожалуйста, укажи свой реальный OpenRouter API-ключ.")
         st.stop()
 
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -65,20 +90,18 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
             
             system_prompt = (
                 "Ты — автономный коммерческий агент Kobi. Твоя задача — решать бизнес-задачи.\n"
-                "Если пользователь просит таблицу, отчет, смету или расчеты:\n"
-                "1. Напиши навык в начале: [EXCEL]\n"
-                "2. Дай деловой ответ пользователю.\n"
-                "3. В самом конце ответа добавь блок данных в формате JSON строго по шаблону:\n"
+                "Выбирай один из навыков в начале ответа:\n"
+                "1. [EXCEL] — если пользователь просит таблицу, смету, расчеты. В конце ответа добавь блок данных в формате JSON строго по шаблону:\n"
                 "```json\n"
                 "{\n"
                 '  "columns": ["Колонка 1", "Колонка 2", "Колонка 3"],\n'
                 '  "rows": [\n'
-                '    ["Значение 1", "Значение 2", "Значение 3"],\n'
-                '    ["Значение 4", "Значение 5", "Значение 6"]\n'
+                '    ["Значение 1", "Значение 2", "Значение 3"]\n'
                 "  ]\n"
                 "}\n"
                 "```\n"
-                "Если файлы не нужны, пиши навык [TEXT] и просто отвечай на вопрос без JSON блока.\n"
+                "2. [PDF] — если пользователь просит коммерческое предложение, договор, текстовый отчет или документ для скачивания.\n"
+                "3. [TEXT] — если файлы не нужны, просто отвечай на вопрос без блоков.\n"
                 "НИКОГДА не выводи исходный код Python в чат."
             )
             
@@ -102,36 +125,4 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
                 reply_text = parts[0].replace("[EXCEL]", "").strip()
                 if len(parts) > 1:
                     try:
-                        json_str = parts[1].split("```")[0].strip()
-                        excel_data = json.loads(json_str)
-                    except Exception:
-                        excel_data = None
-            elif "[TEXT]" in full_reply:
-                reply_text = full_reply.replace("[TEXT]", "").strip()
-
-            file_path = None
-            if skill_tag == "[EXCEL]" and excel_data:
-                status.update(label="Компилирую персональный Excel-файл...", state="running")
-                file_path = "Коммерческий_отчет_Kobi.xlsx"
-                df = pd.DataFrame(
-                    excel_data.get("rows", []), 
-                    columns=excel_data.get("columns", ["Параметр", "Значение"])
-                )
-                df.to_excel(file_path, index=False)
-
-            status.update(label="Задача успешно выполнена!", state="complete", expanded=False)
-
-        st.markdown(reply_text)
-        
-        if file_path and os.path.exists(file_path):
-            file_name = os.path.basename(file_path)
-            with open(file_path, "rb") as f:
-                st.download_button(
-                    label=f"📥 Скачать готовый отчёт: {file_name}",
-                    data=f,
-                    file_name=file_name,
-                    key=f"new_{file_path}_{os.path.getmtime(file_path)}"
-                )
-            st.session_state.messages.append({"role": "assistant", "content": reply_text, "file_path": file_path})
-        else:
-            st.session_state.messages.append({"role": "assistant", "content": reply_text})
+                        json_str = parts[1].split("
