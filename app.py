@@ -22,7 +22,7 @@ with st.sidebar:
         "Выбор модели", 
         [
             "deepseek/deepseek-chat",            # 🚀 Супердешевая и быстрая (основная рабочая лошадка)
-            "google/gemini-2.0-flash-001",       # ⚡ Gemini (чуть дороже DeepSeek, отлично для текста и анализа)
+            "google/gemini-2.0-flash",       # ⚡ Gemini (чуть дороже DeepSeek, отлично для текста и анализа)
             "anthropic/claude-3-haiku",          # 🍃 Недорогой Claude (быстрый и экономный)
             "anthropic/claude-3.5-sonnet",       # 📊 Лучшая для презентаций, структуры и сложных ТЗ
             "openai/gpt-4o-mini"                 # 🤖 Легкая и надежная от OpenAI
