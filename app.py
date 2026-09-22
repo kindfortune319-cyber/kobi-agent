@@ -26,33 +26,25 @@ with st.sidebar:
     st.markdown("---")
     st.success("✅ Система подключена и готова к работе.")
 
-# Класс для генерации PDF с поддержкой кириллицы
-class PDF(FPDF):
-    def header(self):
-        pass
-
-    def footer(self):
-        pass
-
 def generate_pdf_report(title, content):
-    pdf = PDF()
+    pdf = FPDF()
     pdf.add_page()
     
-    # Автоматически скачиваем стандартный TTF-шрифт с поддержкой кириллицы, если его нет
+    # Надежная загрузка шрифта с поддержкой кириллицы через CDN
     font_path = "DejaVuSans.ttf"
     if not os.path.exists(font_path):
         try:
-            url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+            url = "https://cdn.jsdelivr.net/gh/dejavu-fonts/dejavu-fonts@master/ttf/DejaVuSans.ttf"
             urllib.request.urlretrieve(url, font_path)
         except Exception as e:
             print(f"Не удалось скачать шрифт: {e}")
 
-    # Подключаем юникодный шрифт
+    # Подключаем юникодный шрифт в fpdf2
     if os.path.exists(font_path):
         pdf.add_font("DejaVu", fname=font_path)
         pdf.set_font("DejaVu", size=16)
     else:
-        pdf.set_font("Helvetica", size=16)
+        pdf.set_font("Arial", size=16)
 
     # Заголовок
     pdf.cell(0, 10, txt=title, ln=True)
@@ -62,7 +54,7 @@ def generate_pdf_report(title, content):
     if os.path.exists(font_path):
         pdf.set_font("DejaVu", size=10)
     else:
-        pdf.set_font("Helvetica", size=10)
+        pdf.set_font("Arial", size=10)
 
     clean_content = re.sub(r'[*#_`]', '', content)
     
