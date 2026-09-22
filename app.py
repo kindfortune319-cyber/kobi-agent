@@ -1,11 +1,12 @@
 import os
 import json
 import io
+import re
+import urllib.request
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+from fpdf import FPDF
 
 # Настройка страницы
 st.set_page_config(page_title="Kobi — Коммерческий AI Агент", page_icon="🤖", layout="wide")
@@ -25,56 +26,7 @@ with st.sidebar:
     st.markdown("---")
     st.success("✅ Система подключена и готова к работе.")
 
-# Функция создания PDF-документа
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-import os
-import re
-
-import io
-import os
-import re
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-
-def transliterate(text):
-    # Простой словарь для перевода кириллицы в латиницу на случай отсутствия шрифта
-    rus_to_eng = {
-        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
-        'з': 'z', 'и': 'i', 'й': 'j', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
-        'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'ts',
-        'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
-        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh',
-        'З': 'Z', 'И': 'I', 'Й': 'J', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O',
-        'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'H', 'Ц': 'Ts',
-        'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch', 'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
-    }
-    return ''.join([rus_to_eng.get(char, char) for char in text])
-
-import urllib.request
-
-import urllib.request
-import zipfile
-
-import os
-import io
-import urllib.request
-import re
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-
-import io
-import os
-import urllib.request
-import re
-from fpdf import FPDF
-
+# Класс для генерации PDF с поддержкой кириллицы
 class PDF(FPDF):
     def header(self):
         pass
@@ -95,12 +47,12 @@ def generate_pdf_report(title, content):
         except Exception as e:
             print(f"Не удалось скачать шрифт: {e}")
 
-    # Подключаем юникодный шрифт в FPDF2
+    # Подключаем юникодный шрифт
     if os.path.exists(font_path):
-        pdf.add_font("DejaVu", "", font_path, uni=True)
+        pdf.add_font("DejaVu", fname=font_path)
         pdf.set_font("DejaVu", size=16)
     else:
-        pdf.set_font("Arial", size=16)
+        pdf.set_font("Helvetica", size=16)
 
     # Заголовок
     pdf.cell(0, 10, txt=title, ln=True)
@@ -110,13 +62,12 @@ def generate_pdf_report(title, content):
     if os.path.exists(font_path):
         pdf.set_font("DejaVu", size=10)
     else:
-        pdf.set_font("Arial", size=10)
+        pdf.set_font("Helvetica", size=10)
 
     clean_content = re.sub(r'[*#_`]', '', content)
     
     for line in clean_content.split('\n'):
         if line.strip():
-            # multi_cell корректно переносит длинные строки
             pdf.multi_cell(0, 8, txt=line.strip())
         else:
             pdf.ln(4)
@@ -127,6 +78,7 @@ def generate_pdf_report(title, content):
         pdf_output = pdf_output.encode('latin1')
     
     return io.BytesIO(pdf_output)
+
 # Инициализация истории чата
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -185,7 +137,7 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
             full_reply = response.choices[0].message.content
             
             # Страховка на случай, если модель забыла тег, но пользователь просил документ
-            if "[PDF]" not in full_reply and any(word in prompt.lower() for word in ["pdf", "предложение", "отчет", "документ", "смет"]):
+            if "[PDF]" not in full_reply and any(word in prompt.lower() for word in ["pdf", "предложение", "отчет", "документ", "смет", "сочинение"]):
                 full_reply = "[PDF]\n" + full_reply
 
             skill_tag = "[TEXT]"
@@ -207,6 +159,7 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
                 skill_tag = "[PDF]"
                 reply_text = full_reply.replace("[PDF]", "").strip()
             elif "[TEXT]" in full_reply:
+                skill_tag = "[TEXT]"
                 reply_text = full_reply.replace("[TEXT]", "").strip()
 
             file_path = None
