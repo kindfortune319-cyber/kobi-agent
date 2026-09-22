@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import re
 import urllib.parse
 import concurrent.futures
 import contextlib
@@ -201,7 +202,7 @@ for message in messages_list:
     if message["role"] in ["user", "assistant"]:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if "image_url" in message:
+            if "image_url" in message and message["image_url"]:
                 st.image(message["image_url"])
             if "file_path" in message and os.path.exists(message["file_path"]):
                 if message["file_path"].lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -397,26 +398,5 @@ if prompt:
 
             status.update(label="Готово!", state="complete", expanded=False)
 
-        st.markdown(final_reply)
-        
-        if generated_image_url:
-            st.image(generated_image_url)
-
-        assistant_item = {"role": "assistant", "content": final_reply}
-        if generated_image_url:
-            assistant_item["image_url"] = generated_image_url
-        if latest_file_path and os.path.exists(latest_file_path):
-            assistant_item["file_path"] = latest_file_path
-            if latest_file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-                st.image(latest_file_path)
-            with open(latest_file_path, "rb") as f:
-                file_name = os.path.basename(latest_file_path)
-                st.download_button(
-                    label=f"📥 Скачать файл: {file_name}",
-                    data=f,
-                    file_name=file_name,
-                    key=f"new_btn_{latest_file_path}"
-                )
-
-        messages_list.append(assistant_item)
-        st.rerun()
+        # Очищаем текст от мусорных тегов картинок
+        final_reply_clean = re.sub(r'!
