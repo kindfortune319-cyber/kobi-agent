@@ -265,7 +265,6 @@ if prompt:
             generated_image_url = None
 
             try:
-                # ЛОГИКА МУЛЬТИ-МОДЕЛЬНОГО КОНСЕНСУСА ИЛИ ОДИНОЧНОЙ МОДЕЛИ
                 models_to_run = []
                 if model_choice == "ensemble":
                     models_to_run = [
@@ -277,7 +276,6 @@ if prompt:
                 else:
                     models_to_run = [model_choice]
 
-                # Функция запроса к одной модели
                 def query_single_model(m_name):
                     try:
                         res = client.chat.completions.create(
@@ -292,7 +290,6 @@ if prompt:
 
                 status.update(label=f"Опрашиваю модели ({len(models_to_run)} шт.)...", state="running")
                 
-                # Параллельный запуск моделей
                 responses = {}
                 with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
                     futures = {executor.submit(query_single_model, m): m for m in models_to_run}
@@ -300,7 +297,6 @@ if prompt:
                         m_name, res = future.result()
                         responses[m_name] = res
 
-                # Берем первый успешный ответ с tool_calls или текстовый ответ
                 active_response_message = None
                 active_model_used = models_to_run[0]
 
@@ -313,7 +309,6 @@ if prompt:
                             break
 
                 if isinstance(active_response_message, str) or active_response_message is None:
-                    # Если все упали, фоллбэк на deepseek
                     fallback_res = client.chat.completions.create(
                         model="deepseek/deepseek-chat",
                         messages=api_messages,
@@ -380,7 +375,6 @@ if prompt:
                 else:
                     final_reply = response_message.content
 
-                # Если был режим консенсуса, добавим пометку
                 if model_choice == "ensemble":
                     final_reply = f"👑 *[Результат Мульти-Модельного Консенсуса 4-х нейросетей]*\n\n{final_reply}"
 
@@ -407,10 +401,6 @@ if prompt:
                     data=f,
                     file_name=file_name,
                     key=f"new_btn_{latest_file_path}"
-                )
-
-        messages_list.append(assistant_item)
-        st.rerun()
                 )
 
         messages_list.append(assistant_item)
