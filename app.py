@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import urllib.parse
 import concurrent.futures
 import contextlib
 import streamlit as st
@@ -12,7 +13,7 @@ from PIL import Image, ImageOps, ImageFilter
 
 # Настройка страницы
 st.set_page_config(
-    page_title="Kobi — Multi-Model Supreme Agent", 
+    page_title="Kobi — Supreme Multi-Model Consensus", 
     page_icon="🤖", 
     layout="wide"
 )
@@ -28,7 +29,7 @@ if "current_chat" not in st.session_state:
 # --- БОКОВАЯ ПАНЕЛЬ ---
 with st.sidebar:
     st.markdown("### 🤖 Kobi Supreme Agent")
-    st.info("💡 Режим: 4 модели + Мульти-модельный консенсус + Генерация/Редактирование фото.")
+    st.info("💡 Режим: Истинный Мульти-Модельный Консенсус + Flux.1 Фотореализм + Python Sandbox.")
     
     if st.button("➕ Новый чат", use_container_width=True):
         new_name = f"Диалог #{len(st.session_state.chats) + 1}"
@@ -52,11 +53,11 @@ with st.sidebar:
     st.header("⚙️ Выбор режима / модели")
     
     models_dict = {
-        "👑 Мульти-Модельный Консенсус (Все 4 модели сразу)": "ensemble",
+        "👑 Мульти-Модельный Консенсус (Синтез 4-х ИИ)": "ensemble",
         "🚀 DeepSeek Chat (Основная)": "deepseek/deepseek-chat",
         "🧠 Claude 3.5 Sonnet (Премиум)": "anthropic/claude-3.5-sonnet",
-        "💡 GPT-4o Mini ( OpenAI )": "openai/gpt-4o-mini",
-        "⚡ Gemini 2.0 Flash ( Google )": "google/gemini-2.0-flash-exp"
+        "💡 GPT-4o Mini (OpenAI)": "openai/gpt-4o-mini",
+        "⚡ Gemini 2.0 Flash (Google)": "google/gemini-2.0-flash-exp"
     }
     
     selected_model_label = st.selectbox(
@@ -68,8 +69,8 @@ with st.sidebar:
 
 messages_list = st.session_state.chats[st.session_state.current_chat]
 
-st.title("🤖 Kobi — Мульти-агентный комплекс (Supreme Edition)")
-st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Инструменты: Web Search + Image Generation/Editing + Python Sandbox")
+st.title("🤖 Kobi — Мульти-агентный комплекс (Supreme Consensus)")
+st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Движок генерации фото: **FLUX.1 Photorealism**")
 
 # --- ИНСТРУМЕНТЫ АГЕНТА ---
 tools = [
@@ -83,7 +84,7 @@ tools = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Точный поисковый запрос (например, 'FC 27 видео ютуб' или 'новости ИИ')."
+                        "description": "Точный поисковый запрос."
                     }
                 },
                 "required": ["query"]
@@ -94,13 +95,13 @@ tools = [
         "type": "function",
         "function": {
             "name": "generate_image",
-            "description": "Генерирует изображение по детальному текстовому описанию на английском или русском языке.",
+            "description": "Генерирует высококачественное фотореалистичное изображение через нейросеть Flux.1.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "Подробное описание изображения для генерации."
+                        "description": "Детальное описание генерации на английском языке."
                     }
                 },
                 "required": ["prompt"]
@@ -111,13 +112,13 @@ tools = [
         "type": "function",
         "function": {
             "name": "execute_python_code",
-            "description": "Выполняет Python-код для обработки данных, создания файлов (Excel, Word) и профессионального редактирования изображений с помощью PIL.",
+            "description": "Выполняет Python-код для обработки данных, файлов (Excel, Word) и редактирования фото.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "code": {
                         "type": "string",
-                        "description": "Валидный Python код. Доступны pandas, json, io, Document, Image, ImageOps, ImageFilter."
+                        "description": "Валидный Python код."
                     },
                     "description": "Описание задачи."
                 },
@@ -144,7 +145,7 @@ def search_web(query: str) -> str:
 
     if not results:
         formatted_q = query.replace(' ', '+')
-        if any(w in query.lower() for w in ["ютуб", "youtube", "видео", "клип", "fc 27"]):
+        if any(w in query.lower() for w in ["ютуб", "youtube", "видео", "клип"]):
             results.append({
                 "title": f"Смотреть видео по запросу: {query} на YouTube",
                 "href": f"https://www.youtube.com/results?search_query={formatted_q}",
@@ -160,9 +161,11 @@ def search_web(query: str) -> str:
     return json.dumps(results, ensure_ascii=False)
 
 def generate_image(prompt: str) -> str:
-    import urllib.parse
-    encoded = urllib.parse.quote(prompt)
-    image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
+    # Улучшение промпта для Flux.1 фотореализма
+    enhanced_prompt = f"{prompt}, highly detailed, 8k resolution, photorealistic, professional lighting, masterpiece"
+    encoded = urllib.parse.quote(enhanced_prompt)
+    # Используем модель Flux.1 с отключением логотипа
+    image_url = f"https://image.pollinations.ai/prompt/{encoded}?model=flux&width=1024&height=1024&nologo=true&seed=42"
     return json.dumps({"status": "success", "image_url": image_url, "prompt": prompt}, ensure_ascii=False)
 
 def execute_python_code(code: str, description: str = "") -> str:
@@ -210,7 +213,7 @@ for message in messages_list:
                     )
 
 # --- ВХОДНЫЕ ДАННЫЕ ---
-prompt = st.chat_input("Поставьте задачу для Kobi (найти видео, сгенерировать картинку, сделать отчет)...")
+prompt = st.chat_input("Поставьте задачу для Kobi (поиск, генерация фото на Flux, аналитика)...")
 
 if prompt:
     if not MASTER_API_KEY:
@@ -230,22 +233,19 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.status("Kobi запускает мульти-агентную сеть...", expanded=True) as status:
+        with st.status("Запуск агента...", expanded=True) as status:
             client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=MASTER_API_KEY,
             )
             
             system_prompt = (
-                "Ты — Kobi, элитный мульти-модельный автономный ИИ-агент высшего уровня.\n"
-                "У тебя есть инструменты:\n"
-                "- search_web: для поиска информации и ссылок на YouTube.\n"
-                "- generate_image: для генерации изображений по описанию.\n"
-                "- execute_python_code: для расчетов, файлов и редактирования изображений (PIL).\n"
-                "ПРАВИЛА:\n"
-                "1. Никогда не говори 'я не умею'. Используй инструменты.\n"
-                "2. Ссылки оформляй красиво в Markdown: [Название](URL).\n"
-                "3. Выдавай максимально качественный, коммерческий результат."
+                "Ты — Kobi, коммерческий ИИ-агент высшего класса.\n"
+                "Инструменты:\n"
+                "- search_web: поиск информации и ссылок.\n"
+                "- generate_image: создание высококачественных фото на движке Flux.1 (переводи промпт на английский).\n"
+                "- execute_python_code: вычисления и работа с изображениями/файлами.\n"
+                "Выдавай только структурированный, коммерчески готовый результат."
             )
             
             api_messages = [{"role": "system", "content": system_prompt}]
@@ -265,63 +265,82 @@ if prompt:
             generated_image_url = None
 
             try:
-                models_to_run = []
+                # --- ЛОГИКА МУЛЬТИ-МОДЕЛЬНОГО КОНСЕНСУСА ---
                 if model_choice == "ensemble":
-                    models_to_run = [
-                        "deepseek/deepseek-chat",
-                        "anthropic/claude-3.5-sonnet",
-                        "openai/gpt-4o-mini",
-                        "google/gemini-2.0-flash-exp"
+                    status.update(label="👑 [Консенсус]: Параллельный запрос к DeepSeek, Claude, GPT-4o и Gemini...", state="running")
+                    
+                    target_models = [
+                        ("DeepSeek", "deepseek/deepseek-chat"),
+                        ("Claude 3.5", "anthropic/claude-3.5-sonnet"),
+                        ("GPT-4o Mini", "openai/gpt-4o-mini"),
+                        ("Gemini 2.0", "google/gemini-2.0-flash-exp")
                     ]
-                else:
-                    models_to_run = [model_choice]
 
-                def query_single_model(m_name):
-                    try:
-                        res = client.chat.completions.create(
-                            model=m_name,
-                            messages=api_messages,
-                            tools=tools,
-                            tool_choice="auto"
-                        )
-                        return m_name, res
-                    except Exception as ex:
-                        return m_name, str(ex)
+                    def query_model(m_tuple):
+                        m_label, m_id = m_tuple
+                        try:
+                            res = client.chat.completions.create(
+                                model=m_id,
+                                messages=api_messages,
+                                tools=tools,
+                                tool_choice="auto"
+                            )
+                            return m_label, res.choices[0].message
+                        except Exception as ex:
+                            return m_label, None
 
-                status.update(label=f"Опрашиваю модели ({len(models_to_run)} шт.)...", state="running")
-                
-                responses = {}
-                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-                    futures = {executor.submit(query_single_model, m): m for m in models_to_run}
-                    for future in concurrent.futures.as_completed(futures):
-                        m_name, res = future.result()
-                        responses[m_name] = res
+                    responses_map = {}
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                        futures = [executor.submit(query_model, tm) for tm in target_models]
+                        for f in concurrent.futures.as_completed(futures):
+                            label, msg = f.result()
+                            if msg:
+                                responses_map[label] = msg
 
-                active_response_message = None
-                active_model_used = models_to_run[0]
-
-                for m_name, res in responses.items():
-                    if not isinstance(res, str) and res.choices:
-                        msg = res.choices[0].message
-                        if msg.tool_calls or msg.content:
-                            active_response_message = msg
-                            active_model_used = m_name
+                    # Проверяем, есть ли вызовы инструментов хотя бы у одной модели
+                    tool_call_msg = None
+                    for label, msg in responses_map.items():
+                        if msg and msg.tool_calls:
+                            tool_call_msg = msg
                             break
 
-                if isinstance(active_response_message, str) or active_response_message is None:
-                    fallback_res = client.chat.completions.create(
-                        model="deepseek/deepseek-chat",
+                    if tool_call_msg:
+                        # Если требуется выполнение инструмента (поиск/картинка/код)
+                        response_message = tool_call_msg
+                    else:
+                        # ИСТИННЫЙ КОНСЕНСУС ТЕКСТА: собираем мнения всех сетей и просим DeepSeek их синтезировать
+                        status.update(label="👑 [Консенсус]: Мастер-синтез лучших идей всех моделей...", state="running")
+                        opinions_text = "\n\n".join([
+                            f"--- Вариант от {lbl} ---\n{msg.content if msg.content else 'Нет ответа'}"
+                            for lbl, msg in responses_map.items()
+                        ])
+
+                        synthesis_prompt = (
+                            f"Ниже приведены ответы 4-х разных моделей ИИ на запрос пользователя:\n\n{opinions_text}\n\n"
+                            "ЗАДАЧА: Проанализируй все 4 ответа, убери ошибки и галлюцинации, объедини лучшие мысли "
+                            "и дай один ИДЕАЛЬНЫЙ, экспертный и исчерпывающий ответ."
+                        )
+
+                        synth_messages = api_messages + [{"role": "user", "content": synthesis_prompt}]
+                        synth_res = client.chat.completions.create(
+                            model="deepseek/deepseek-chat",
+                            messages=synth_messages
+                        )
+                        response_message = synth_res.choices[0].message
+
+                else:
+                    # Одиночный режим
+                    res = client.chat.completions.create(
+                        model=model_choice,
                         messages=api_messages,
                         tools=tools,
                         tool_choice="auto"
                     )
-                    active_response_message = fallback_res.choices[0].message
-                    active_model_used = "deepseek/deepseek-chat (Fallback)"
+                    response_message = res.choices[0].message
 
-                response_message = active_response_message
-
+                # --- ОБРАБОТКА ВЫЗОВА ИНСТРУМЕНТОВ ---
                 if response_message.tool_calls:
-                    status.update(label=f"Модель [{active_model_used}] выполняет инструменты...", state="running")
+                    status.update(label="Агент выполняет инструменты (Flux / Search / Code)...", state="running")
                     
                     messages_list.append({
                         "role": "assistant",
@@ -365,10 +384,10 @@ if prompt:
                                 "content": tool_output
                             })
 
-                    status.update(label="Формирую финальный синергетический ответ...", state="running")
+                    status.update(label="Завершение генерации результата...", state="running")
                     
                     second_response = client.chat.completions.create(
-                        model=active_model_used.split(" ")[0] if " " in active_model_used else active_model_used,
+                        model="deepseek/deepseek-chat" if model_choice == "ensemble" else model_choice,
                         messages=api_messages
                     )
                     final_reply = second_response.choices[0].message.content
@@ -376,10 +395,10 @@ if prompt:
                     final_reply = response_message.content
 
                 if model_choice == "ensemble":
-                    final_reply = f"👑 *[Результат Мульти-Модельного Консенсуса 4-х нейросетей]*\n\n{final_reply}"
+                    final_reply = f"👑 **[Результат Мульти-Модельного Синтеза DeepSeek + Claude + GPT-4o + Gemini]**\n\n{final_reply}"
 
             except Exception as e:
-                st.error(f"⚠️ Ошибка сети агентов: {e}")
+                st.error(f"⚠️ Ошибка выполнения: {e}")
                 st.stop()
 
             status.update(label="Готово!", state="complete", expanded=False)
@@ -387,7 +406,7 @@ if prompt:
         st.markdown(final_reply)
         
         if generated_image_url:
-            st.image(generated_image_url, caption="Сгенерированное изображение Kobi")
+            st.image(generated_image_url, caption="Генерация FLUX.1 Photorealism")
 
         assistant_item = {"role": "assistant", "content": final_reply}
         if latest_file_path and os.path.exists(latest_file_path):
