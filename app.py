@@ -3,11 +3,12 @@ import io
 import json
 import sys
 import contextlib
+import urllib.request
+import urllib.parse
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
 from docx import Document
-from duckduckgo_search import DDGS
 
 # Настройка страницы
 st.set_page_config(
@@ -68,7 +69,7 @@ with st.sidebar:
 messages_list = st.session_state.chats[st.session_state.current_chat]
 
 st.title("🤖 Kobi — Автономный ИИ-Агент нового поколения")
-st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Архитектура: Dynamic Code Execution + Web Tooling")
+st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Архитектура: Dynamic Code Execution + Built-in Web Tooling")
 
 # --- УНИВЕРСАЛЬНЫЕ ИНСТРУМЕНТЫ АГЕНТА ---
 tools = [
@@ -76,7 +77,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "search_web",
-            "description": "Ищет информацию, статьи, сайты, документацию и ссылки на видео (включая YouTube) в интернете.",
+            "description": "Ищет информацию, статьи, сайты, документацию и ссылки в интернете без использования сторонних библиотек.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -113,26 +114,48 @@ tools = [
     }
 ]
 
-# --- ИСПОЛНИТЕЛИ ---
+# --- ИСПОЛНИТЕЛИ (БЕЗ ВНЕШНИХ ЗАВИСИМОСТЕЙ) ---
 def search_web(query: str) -> str:
     try:
+        encoded_query = urllib.parse.quote(query)
+        url = f"https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1&skip_disambig=1"
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            
         results = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=6):
+        if data.get("AbstractText"):
+            results.append({
+                "title": data.get("Heading", "Результат"),
+                "href": data.get("AbstractURL", ""),
+                "body": data.get("AbstractText")
+            })
+        for topic in data.get("RelatedTopics", []):
+            if isinstance(topic, dict) and "Text" in topic:
                 results.append({
-                    "title": r.get("title"),
-                    "href": r.get("href"),
-                    "body": r.get("body")
+                    "title": topic.get("Text", "")[:60] + "...",
+                    "href": topic.get("FirstURL", ""),
+                    "body": topic.get("Text", "")
                 })
-        return json.dumps(results, ensure_ascii=False)
+        
+        if not results:
+            results.append({
+                "title": f"Поиск: {query}",
+                "href": f"https://duckduckgo.com/?q={encoded_query}",
+                "body": "Прямая ссылка на результаты поиска в DuckDuckGo."
+            })
+            
+        return json.dumps(results[:5], ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
+        return json.dumps([{"error": str(e), "fallback_url": f"https://duckduckgo.com/?q={urllib.parse.quote(query)}"}], ensure_ascii=False)
 
 def execute_python_code(code: str, description: str = "") -> str:
     """Безопасное выполнение Python кода с перехватом stdout"""
     output_buffer = io.StringIO()
     
-    # Безопасное окружение с предзагруженными библиотеками
     safe_globals = {
         "pd": pd,
         "json": json,
@@ -143,7 +166,6 @@ def execute_python_code(code: str, description: str = "") -> str:
     
     try:
         with contextlib.redirect_stdout(output_buffer):
-            # Выполняем код
             exec(code, safe_globals)
         
         captured_output = output_buffer.getvalue()
@@ -167,18 +189,9 @@ for message in messages_list:
     with st.chat_message(message["role"]):
         if message.get("content"):
             st.markdown(message["content"])
-        if "file_path" in message and os.path.exists(message["file_path"]):
-            with open(message["file_path"], "rb") as f:
-                file_name = os.path.basename(message['file_path'])
-                st.download_button(
-                    label=f"📥 Скачать сгенерированный файл: {file_name}",
-                    data=f,
-                    file_name=file_name,
-                    key=f"hist_{message['file_path']}_{os.path.getmtime(message['file_path'])}"
-                )
 
 # --- ВХОДНЫЕ ДАННЫЕ ---
-prompt = st.chat_input("Поставьте задачу для Kobi (например: найди видео в ютуб или сделай сложный отчет)...")
+prompt = st.chat_input("Поставьте задачу для Kobi...")
 
 if prompt:
     if not MASTER_API_KEY:
@@ -208,8 +221,8 @@ if prompt:
                 "Ты — Kobi, автономный коммерческий супер-агент нового поколения с неограниченными возможностями.\n"
                 "У тебя есть доступ к поиску в интернете (search_web) и к универсальной среде выполнения кода (execute_python_code).\n"
                 "НИКОГДА не говори пользователю 'я не умею', 'у меня нет инструментов' или 'сделайте это сами'.\n"
-                "Если нужно найти информацию или видео — используй search_web. Если нужно создать файл, посчитать данные, "
-                "рассчитать смету или решить техническую задачу — пиши Python-код и запускай его через execute_python_code.\n"
+                "Если нужно найти информацию — используй search_web. Если нужно создать файл, посчитать данные, "
+                "решить техническую задачу — пиши Python-код и запускай его через execute_python_code.\n"
                 "Будь проактивным, думай наперед, предлагай лучшие решения и действуй абсолютно автономно."
             )
             
@@ -225,7 +238,6 @@ if prompt:
                         msg_dict["name"] = m["name"]
                     api_messages.append(msg_dict)
 
-            generated_file_path = None
             final_reply = ""
 
             try:
@@ -259,13 +271,6 @@ if prompt:
                         if function_name in available_functions:
                             function_to_call = available_functions[function_name]
                             tool_output = function_to_call(**function_args)
-                            
-                            # Проверяем, создал ли Python-код файл в текущей директории
-                            if function_name == "execute_python_code":
-                                for f_name in os.listdir('.'):
-                                    if f_name.endswith(('.xlsx', '.docx', '.csv', '.txt')) and os.path.getmtime(f_name) > (os.time() - 10 if hasattr(os, 'time') else 0):
-                                        # Уберем слишком старые файлы, зафиксируем свежий созданный файл
-                                        pass
 
                             messages_list.append({
                                 "role": "tool",
@@ -297,7 +302,5 @@ if prompt:
             status.update(label="Готово!", state="complete", expanded=False)
 
         st.markdown(final_reply)
-        
-        assistant_history_item = {"role": "assistant", "content": final_reply}
-        messages_list.append(assistant_history_item)
+        messages_list.append({"role": "assistant", "content": final_reply})
         st.rerun()
