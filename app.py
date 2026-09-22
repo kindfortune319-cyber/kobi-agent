@@ -1,9 +1,7 @@
 import os
-import json
 import io
 import re
 import base64
-import requests
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
@@ -14,9 +12,9 @@ st.set_page_config(page_title="Kobi — AI Platform", page_icon="🤖", layout="
 
 MASTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
 
-# --- ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ (АККАУНТЫ И ЧАТЫ) ---
+# --- ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ ---
 if "user" not in st.session_state:
-    st.session_state.user = None  # None = гость (не вошел)
+    st.session_state.user = None
 
 if "chats" not in st.session_state:
     st.session_state.chats = {"💬 Новый чат": []}
@@ -27,9 +25,8 @@ if "current_chat" not in st.session_state:
 with st.sidebar:
     st.markdown("### 🤖 Kobi Intelligence")
     
-    # Блок авторизации и аккаунта
     if st.session_state.user is None:
-        st.info("👋 Вы вошли как **Гость**. Доступны базовые модели.")
+        st.info("👋 Вы вошли как **Гость**.")
         with st.expander("🔑 Вход / Регистрация"):
             username_input = st.text_input("Имя пользователя / Email")
             if st.button("Продолжить", use_container_width=True):
@@ -49,13 +46,12 @@ with st.sidebar:
                 st.balloons()
                 st.rerun()
         
-        if st.button("🚪 Выйти из аккаунта", use_container_width=True):
+        if st.button("🚪 Выйти", use_container_width=True):
             st.session_state.user = None
             st.rerun()
 
     st.markdown("---")
     
-    # Кнопка нового чата
     if st.button("➕ Новый чат", use_container_width=True):
         new_name = f"Диалог #{len(st.session_state.chats) + 1}"
         st.session_state.chats[new_name] = []
@@ -77,14 +73,13 @@ with st.sidebar:
     st.markdown("---")
     st.header("⚙️ Выбор модели")
     
-    # Стабильные идентификаторы моделей на OpenRouter
     model_choice = st.selectbox(
         "Модель", 
         [
-            "deepseek/deepseek-chat",            # Free
-            "google/gemini-flash-1.5",           # Free (стабильная Gemini)
-            "anthropic/claude-3-haiku",          # Free / PRO
-            "anthropic/claude-3.5-sonnet"        # 🔒 PRO (премиум для презентаций и структуры)
+            "deepseek/deepseek-chat",
+            "google/gemini-flash-1.5",
+            "anthropic/claude-3-haiku",
+            "anthropic/claude-3.5-sonnet"
         ],
         format_func=lambda x: f"🚀 DeepSeek Chat (Free)" if "deepseek" in x else 
                              (f"⚡ Gemini Flash 1.5 (Free)" if "gemini" in x else
@@ -100,7 +95,7 @@ is_pro_model = "sonnet" in model_choice
 user_is_pro = st.session_state.user and st.session_state.user.get("pro", False)
 
 if is_pro_model and not user_is_pro:
-    st.warning("🔒 **Claude 3.5 Sonnet доступна только по PRO-подписке.** Оформите подписку в боковой панели или выберите бесплатную модель.")
+    st.warning("🔒 **Claude 3.5 Sonnet доступна только по PRO-подписке.**")
 
 def generate_word_report(title, content):
     doc = Document()
@@ -116,7 +111,7 @@ def generate_word_report(title, content):
     buffer.seek(0)
     return buffer
 
-# Вывод истории сообщений текущего чата
+# Вывод истории сообщений
 for message in messages_list:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -132,36 +127,24 @@ for message in messages_list:
                     key=f"hist_{message['file_path']}_{os.path.getmtime(message['file_path'])}"
                 )
 
-# --- ГОЛОСОВОЙ ВВОД (МИКРОФОН) ---
+# --- ГОЛОСОВОЙ ВВОД ---
 audio_value = st.audio_input("🎙️ Записать голосовое сообщение")
 
 prompt = None
 if audio_value:
-    with st.spinner("Распознаю голос через Whisper..."):
-        try:
-            audio_bytes = audio_value.read()
-            b64_audio = base64.b64encode(audio_bytes).decode('utf-8')
-            headers = {"Authorization": f"Bearer {MASTER_API_KEY}"}
-            payload = {"model": "openai/whisper-1", "file": b64_audio}
-            res = requests.post("https://openrouter.ai/api/v1/audio/transcriptions", headers=headers, json=payload)
-            if res.status_code == 200:
-                prompt = res.json().get("text", "")
-            else:
-                st.error("Не удалось расшифровать аудио.")
-        except Exception as e:
-            st.error(f"Ошибка голосового ввода: {e}")
+    st.info("💡 Голосовые сообщения сохранены. Для отправки текстовых задач используйте поле ввода ниже (поддержка аудио-транскрипции в разработке).")
 
 text_prompt = st.chat_input("Спросите что угодно или отправьте задачу...")
 if text_prompt:
     prompt = text_prompt
 
-# Обработка сообщения
+# Обработка запроса
 if prompt:
     if is_pro_model and not user_is_pro:
         st.error("Для отправки запроса этой модели необходима PRO-подписка.")
         st.stop()
         
-    if not MASTER_API_KEY or MASTER_API_KEY.startswith("sk-or-v1-..."):
+    if not MASTER_API_KEY:
         st.error("Укажите валидный OpenRouter API-ключ.")
         st.stop()
 
@@ -185,10 +168,10 @@ if prompt:
             
             system_prompt = (
                 "Ты — автономный коммерческий агент Kobi. Твоя задача — решать бизнес-задачи.\n"
-                "СТРОГОЕ ПРАВИЛО: Каждый ответ ты ОБЯЗАН начинать с одного из тегов в самом начале:\n"
-                "1. [EXCEL] — если просят таблицу, смету, расчеты. В конце добавь JSON блок.\n"
-                "2. [PDF] — если просят документ, презентацию, структуру, сочинение, КП или отчет. Текст пойдет в Word.\n"
-                "3. [TEXT] — для обычных ответов.\n"
+                "СТРОГОЕ ПРАВИЛО:\n"
+                "1. Если просят таблицу, смету, расчеты — начни ответ с тега [EXCEL] и выведи данные в виде CSV-таблицы внутри блока ```csv ... ```.\n"
+                "2. Если просят документ, презентацию, отчет, структуру — начни с тега [PDF].\n"
+                "3. Для остальных ответов используй [TEXT].\n"
                 "НИКОГДА не выводи исходный код Python."
             )
             
@@ -196,7 +179,6 @@ if prompt:
                 {"role": m["role"], "content": m["content"]} for m in messages_list
             ]
             
-            # ЗАЩИЩЕННЫЙ ВЫЗОВ API (не падает с красным экраном)
             try:
                 response = client.chat.completions.create(
                     model=model_choice,
@@ -204,27 +186,22 @@ if prompt:
                 )
                 full_reply = response.choices[0].message.content
             except Exception as e:
-                st.error(f"⚠️ Ошибка от провайдера модели `{model_choice}`: {e}. Пожалуйста, выберите другую модель в боковой панели.")
+                st.error(f"⚠️ Ошибка от провайдера модели `{model_choice}`: {e}")
                 st.stop()
             
-            if "[PDF]" not in full_reply and any(w in prompt.lower() for w in ["pdf", "файл", "презентац", "структур", "сочинение", "предложение", "отчет", "документ", "смет"]):
+            if "[PDF]" not in full_reply and "[EXCEL]" not in full_reply and any(w in prompt.lower() for w in ["файл", "презентац", "структур", "отчет", "документ", "смет"]):
                 full_reply = "[PDF]\n" + full_reply
 
             skill_tag = "[TEXT]"
             reply_text = full_reply
-            excel_data = None
+            csv_data = None
             
             if "[EXCEL]" in full_reply:
                 skill_tag = "[EXCEL]"
-                parts = full_reply.split("```json")
+                parts = full_reply.split("```csv")
                 reply_text = parts[0].replace("[EXCEL]", "").strip()
                 if len(parts) > 1:
-                    try:
-                        json_part = parts[1].split("```")
-                        json_str = json_part[0].strip()
-                        excel_data = json.loads(json_str)
-                    except Exception:
-                        excel_data = None
+                    csv_data = parts[1].split("```")[0].strip()
             elif "[PDF]" in full_reply:
                 skill_tag = "[PDF]"
                 reply_text = full_reply.replace("[PDF]", "").strip()
@@ -233,16 +210,20 @@ if prompt:
                 reply_text = full_reply.replace("[TEXT]", "").strip()
 
             file_path = None
-            if skill_tag == "[EXCEL]" and excel_data:
+            if skill_tag == "[EXCEL]" and csv_data:
                 status.update(label="Компилирую Excel-файл...", state="running")
                 file_path = "Коммерческий_отчет_Kobi.xlsx"
-                df = pd.DataFrame(excel_data.get("rows", []), columns=excel_data.get("columns", ["Параметр", "Значение"]))
-                df.to_excel(file_path, index=False)
+                try:
+                    df = pd.read_csv(io.StringIO(csv_data), sep=None, engine='python')
+                    df.to_excel(file_path, index=False)
+                except Exception:
+                    df = pd.DataFrame([["Ошибка", "Не удалось распарсить CSV"]])
+                    df.to_excel(file_path, index=False)
             elif skill_tag == "[PDF]":
                 status.update(label="Генерация Word-документа...", state="running")
                 file_path = "Kobi_Document.docx"
                 word_buffer = generate_word_report("Документ от Kobi AI", reply_text)
-                with open(file_path, "wb") as f:
+                with open(file_path, "wb5") as f:
                     f.write(word_buffer.getbuffer())
 
             status.update(label="Готово!", state="complete", expanded=False)
