@@ -25,17 +25,15 @@ with st.sidebar:
     st.markdown("---")
     st.success("✅ Система подключена и готова к работе.")
 
-# Функция создания PDF-документа (с защитой от сбоев кодировки)
+# Функция создания PDF-документа
 def generate_pdf_report(title, content):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    # Заголовок (транслит/английский для стабильности PDF)
     c.setFont("Helvetica-Bold", 16)
     c.drawString(50, height - 50, "Kobi Commercial Document")
     
-    # Текст отчета
     c.setFont("Helvetica", 11)
     text_y = height - 90
     for line in content.split('\n'):
@@ -43,7 +41,6 @@ def generate_pdf_report(title, content):
             c.showPage()
             c.setFont("Helvetica", 11)
             text_y = height - 50
-        # Очистка символов для корректного отображения
         safe_line = line.encode('ascii', 'ignore').decode('ascii')
         if safe_line.strip():
             c.drawString(50, text_y, safe_line)
@@ -93,19 +90,11 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
             
             system_prompt = (
                 "Ты — автономный коммерческий агент Kobi. Твоя задача — решать бизнес-задачи.\n"
-                "Выбирай один из навыков в начале ответа:\n"
-                "1. [EXCEL] — если пользователь просит таблицу, смету, расчеты. Пиши данные на русском языке! В конце ответа добавь блок данных в формате JSON строго по шаблону:\n"
-                "```json\n"
-                "{\n"
-                '  "columns": ["Параметр", "Значение"],\n'
-                '  "rows": [\n'
-                '    ["Пункт 1", "1000"]\n'
-                "  ]\n"
-                "}\n"
-                "```\n"
-                "2. [PDF] — если просят КП или документ. Пиши текст для PDF на английском языке, чтобы он без проблем сгенерировался в файл.\n"
-                "3. [TEXT] — для обычных ответов на русском языке.\n"
-                "НИКОГДА не выводи исходный код Python в чат."
+                "СТРОГОЕ ПРАВИЛО: Каждый ответ ты ОБЯЗАН начинать с одного из тегов в самом начале:\n"
+                "1. [EXCEL] — если пользователь просит таблицу, смету, расчеты. В конце добавь JSON блок.\n"
+                "2. [PDF] — ЕСЛИ ПОЛЬЗОВАТЕЛЬ ПРОСИТ ДОКУМЕНТ, КП, ДОГОВОР ИЛИ ОТЧЕТ. Весь текст после тега [PDF] пойдет в PDF-документ.\n"
+                "3. [TEXT] — для обычных ответов на вопросы.\n"
+                "НИКОГДА не выводи исходный код Python."
             )
             
             messages = [{"role": "system", "content": system_prompt}] + [
@@ -118,6 +107,10 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
             )
             full_reply = response.choices[0].message.content
             
+            # Страховка на случай, если модель забыла тег, но пользователь просил документ
+            if "[PDF]" not in full_reply and any(word in prompt.lower() for word in ["pdf", "предложение", "отчет", "документ", "смет"]):
+                full_reply = "[PDF]\n" + full_reply
+
             skill_tag = "[TEXT]"
             reply_text = full_reply
             excel_data = None
