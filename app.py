@@ -417,7 +417,29 @@ if prompt:
                 label=f"📥 Скачать файл: {file_name}",
                 data=f,
                 file_name=file_name,
-                key=f"new_btn_{latest_file_path}"
+                key=f"new_btn_{latest_file_path}"def generate_image(prompt: str) -> str:
+    try:
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=MASTER_API_KEY,
+        )
+        response = client.chat.completions.create(
+            model="meta/muse-image",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        content = response.choices[0].message.content
+        
+        # Извлекаем ссылку на изображение из ответа модели
+        img_match = re.search(r'(https?://[^\s)]+)', content)
+        image_url = img_match.group(1) if img_match else content.strip()
+        
+        return json.dumps({"status": "success", "image_url": image_url, "prompt": prompt}, ensure_ascii=False)
+    except Exception as e:
+        # Резервный вариант на случай ошибки API
+        enhanced_prompt = f"{prompt}, photorealistic, highly detailed, 8k"
+        encoded = urllib.parse.quote(enhanced_prompt)
+        image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&nologo=true&seed=1337"
+        return json.dumps({"status": "success", "image_url": image_url, "prompt": prompt}, ensure_ascii=False)
             )
 
     messages_list.append(assistant_item)
