@@ -17,12 +17,14 @@ st.caption("Профессиональный мультимодельный ас
 # ЖЕСТКО ЗАШИТЫЙ КЛЮЧ ИЗ ОБЛАЧНЫХ СЕКРЕТОВ
 MASTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
 
-# ГАРАНТИРОВАННАЯ ЗАГРУЗКА ШРИФТА ПРИ СТАРТЕ ПРИЛОЖЕНИЯ
+# ГАРАНТИРОВАННАЯ ЗАГРУЗКА ШРИФТА С USER-AGENT (чтобы сервер не блокировал)
 FONT_PATH = "DejaVuSans.ttf"
 if not os.path.exists(FONT_PATH):
     try:
-        url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
-        urllib.request.urlretrieve(url, FONT_PATH)
+        url = "https://cdn.jsdelivr.net/gh/dejavu-fonts/dejavu-fonts@master/ttf/DejaVuSans.ttf"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response, open(FONT_PATH, 'wb') as out_file:
+            out_file.write(response.read())
     except Exception as e:
         print(f"Ошибка загрузки шрифта: {e}")
 
