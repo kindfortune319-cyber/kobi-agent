@@ -397,6 +397,28 @@ if prompt:
                 st.stop()
 
             status.update(label="Готово!", state="complete", expanded=False)
+            # Очищаем текст от мусорных тегов картинок одной строкой без разрывов
+        final_reply_clean = re.sub(r'!$.*?$', '', final_reply).strip()
+        st.markdown(final_reply_clean)
+    
+    if generated_image_url:
+        st.image(generated_image_url)
 
-        # Очищаем текст от мусорных тегов картинок
-        final_reply_clean = re.sub(r'!
+    assistant_item = {"role": "assistant", "content": final_reply_clean}
+    if generated_image_url:
+        assistant_item["image_url"] = generated_image_url
+    if latest_file_path and os.path.exists(latest_file_path):
+        assistant_item["file_path"] = latest_file_path
+        if latest_file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+            st.image(latest_file_path)
+        with open(latest_file_path, "rb") as f:
+            file_name = os.path.basename(latest_file_path)
+            st.download_button(
+                label=f"📥 Скачать файл: {file_name}",
+                data=f,
+                file_name=file_name,
+                key=f"new_btn_{latest_file_path}"
+            )
+
+    messages_list.append(assistant_item)
+    st.rerun()
