@@ -62,11 +62,8 @@ def generate_pdf_report(title, content):
     
     font_registered = False
     try:
-        # Проверяем пути для Linux и Windows
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "C:/Windows/Fonts/arial.ttf"
-        ]
+        # Ищем шрифт в папке проекта или в системе
+        font_paths = ["arial.ttf", "dejavu.ttf", "C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
         for path in font_paths:
             if os.path.exists(path):
                 pdfmetrics.registerFont(TTFont('CustomFont', path))
@@ -78,31 +75,27 @@ def generate_pdf_report(title, content):
     # Заголовок
     if font_registered:
         c.setFont("CustomFont", 16)
+        c.drawString(50, height - 50, title)
     else:
         c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, height - 50, title if font_registered else transliterate(title))
+        c.drawString(50, height - 50, transliterate(title))
     
     # Текст отчета
-    if font_registered:
-        c.setFont("CustomFont", 10)
-    else:
-        c.setFont("Helvetica", 10)
-        
     text_y = height - 90
     clean_content = re.sub(r'[*#_`]', '', content)
     
     for line in clean_content.split('\n'):
         if text_y < 50:  
             c.showPage()
-            if font_registered:
-                c.setFont("CustomFont", 10)
-            else:
-                c.setFont("Helvetica", 10)
             text_y = height - 50
             
         if line.strip():
-            print_line = line.strip() if font_registered else transliterate(line.strip())
-            c.drawString(50, text_y, print_line[:90])
+            if font_registered:
+                c.setFont("CustomFont", 10)
+                c.drawString(50, text_y, line.strip()[:90])
+            else:
+                c.setFont("Helvetica", 10)
+                c.drawString(50, text_y, transliterate(line.strip()[:90]))
             text_y -= 18
         
     c.save()
