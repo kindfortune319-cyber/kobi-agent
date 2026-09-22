@@ -47,16 +47,19 @@ with st.sidebar:
     st.markdown("---")
     st.header("⚙️ Выбор модели")
     
+    # DeepSeek на первом месте (по умолчанию), Claude в списке для ручного выбора
     model_choice = st.selectbox(
         "Модель", 
         [
-            "anthropic/claude-3.5-sonnet",
             "deepseek/deepseek-chat",
-            "google/gemini-2.5-flash"
+            "anthropic/claude-3.5-sonnet",
+            "google/gemini-2.0-flash-exp"
         ],
+        index=0,
         format_func=lambda x: (
-            "👑 Claude 3.5 Sonnet (Лучший для агентов)" if "sonnet" in x else
-            ("🚀 DeepSeek Chat" if "deepseek" in x else "⚡ Gemini Flash")
+            "🚀 DeepSeek Chat (Основная / Бюджет)" if "deepseek" in x else
+            "🧠 Claude 3.5 Sonnet (Премиум / Дорогая)" if "claude" in x else
+            "⚡ Gemini Flash"
         )
     )
 
@@ -201,7 +204,6 @@ if prompt:
                 "Действуй профессионально и автономно."
             )
             
-            # Формируем историю для API с поддержкой tool-сообщений
             api_messages = [{"role": "system", "content": system_prompt}]
             for m in messages_list:
                 if m["role"] in ["user", "assistant", "tool"]:
@@ -218,7 +220,6 @@ if prompt:
             final_reply = ""
 
             try:
-                # Первый запрос к модели с передачей инструментов
                 response = client.chat.completions.create(
                     model=model_choice,
                     messages=api_messages,
@@ -228,11 +229,9 @@ if prompt:
                 
                 response_message = response.choices[0].message
                 
-                # Если модель решила вызвать инструмент(ы)
                 if response_message.tool_calls:
                     status.update(label="Выполняю инструменты (Function Calling)...", state="running")
                     
-                    # Сохраняем вызовы в историю
                     messages_list.append({
                         "role": "assistant",
                         "content": response_message.content,
@@ -244,7 +243,6 @@ if prompt:
                         "tool_calls": response_message.tool_calls
                     })
 
-                    # Исполняем каждый вызов функции
                     for tool_call in response_message.tool_calls:
                         function_name = tool_call.function.name
                         function_args = json.loads(tool_call.function.arguments)
@@ -260,7 +258,6 @@ if prompt:
                             except:
                                 pass
 
-                            # Отправляем результат выполнения инструмента обратно модели
                             messages_list.append({
                                 "role": "tool",
                                 "tool_call_id": tool_call.id,
@@ -276,7 +273,6 @@ if prompt:
 
                     status.update(label="Формирую окончательный ответ...", state="running")
                     
-                    # Второй запрос модели для получения текста после успешного выполнения функций
                     second_response = client.chat.completions.create(
                         model=model_choice,
                         messages=api_messages
