@@ -25,38 +25,34 @@ with st.sidebar:
     st.markdown("---")
     st.success("✅ Система подключена и готова к работе.")
 
-# Функция создания PDF-документа
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-import io
-
+# Функция создания PDF-документа (с защитой от сбоев кодировки)
 def generate_pdf_report(title, content):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    # Используем стандартный Helvetica, но очищаем текст от проблемных символов, 
-    # либо выводим заголовок латиницей/стандартными символами, чтобы избежать квадратов
-    c.setFont("Helvetica-Bold", 14)
+    # Заголовок (транслит/английский для стабильности PDF)
+    c.setFont("Helvetica-Bold", 16)
     c.drawString(50, height - 50, "Kobi Commercial Document")
     
-    c.setFont("Helvetica", 10)
+    # Текст отчета
+    c.setFont("Helvetica", 11)
     text_y = height - 90
     for line in content.split('\n'):
-        if text_y < 50:
+        if text_y < 50:  
             c.showPage()
-            c.setFont("Helvetica", 10)
+            c.setFont("Helvetica", 11)
             text_y = height - 50
-        # Предотвращаем сбои кодировки
-        safe_line = line.encode('latin-1', 'ignore').decode('latin-1')
-        c.drawString(50, text_y, safe_line)
-        text_y = text_y - 18
+        # Очистка символов для корректного отображения
+        safe_line = line.encode('ascii', 'ignore').decode('ascii')
+        if safe_line.strip():
+            c.drawString(50, text_y, safe_line)
+            text_y -= 20
         
     c.save()
     buffer.seek(0)
     return buffer
+
 # Инициализация истории чата
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -78,7 +74,7 @@ for message in st.session_state.messages:
                 )
 
 # Обработка ввода пользователя
-if prompt := st.chat_input("Какую задачу нужно решить? (например: 'Сделай смету' или 'Напиши КП в PDF')"):
+if prompt := st.chat_input("Какую задачу нужно решить? (например: 'Сделай смету' или 'Напиши КП')"):
     if not MASTER_API_KEY or MASTER_API_KEY.startswith("sk-or-v1-..."):
         st.error("Пожалуйста, укажи свой реальный OpenRouter API-ключ.")
         st.stop()
@@ -98,17 +94,17 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
             system_prompt = (
                 "Ты — автономный коммерческий агент Kobi. Твоя задача — решать бизнес-задачи.\n"
                 "Выбирай один из навыков в начале ответа:\n"
-                "1. [EXCEL] — если пользователь просит таблицу, смету, расчеты. В конце ответа добавь блок данных в формате JSON строго по шаблону:\n"
+                "1. [EXCEL] — если пользователь просит таблицу, смету, расчеты. Пиши данные на русском языке! В конце ответа добавь блок данных в формате JSON строго по шаблону:\n"
                 "```json\n"
                 "{\n"
-                '  "columns": ["Колонка 1", "Колонка 2", "Колонка 3"],\n'
+                '  "columns": ["Параметр", "Значение"],\n'
                 '  "rows": [\n'
-                '    ["Значение 1", "Значение 2", "Значение 3"]\n'
+                '    ["Пункт 1", "1000"]\n'
                 "  ]\n"
                 "}\n"
                 "```\n"
-                "2. [PDF] — если пользователь просит коммерческое предложение, договор, текстовый отчет или документ для скачивания.\n"
-                "3. [TEXT] — если файлы не нужны, просто отвечай на вопрос без блоков.\n"
+                "2. [PDF] — если просят КП или документ. Пиши текст для PDF на английском языке, чтобы он без проблем сгенерировался в файл.\n"
+                "3. [TEXT] — для обычных ответов на русском языке.\n"
                 "НИКОГДА не выводи исходный код Python в чат."
             )
             
@@ -155,7 +151,7 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
             elif skill_tag == "[PDF]":
                 status.update(label="Генерирую официальный PDF-документ...", state="running")
                 file_path = "Kobi_Commercial_Offer.pdf"
-                pdf_buffer = generate_pdf_report("Коммерческий документ от Kobi", reply_text)
+                pdf_buffer = generate_pdf_report("Commercial Document", reply_text)
                 with open(file_path, "wb") as f:
                     f.write(pdf_buffer.getbuffer())
 
