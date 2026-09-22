@@ -26,30 +26,63 @@ with st.sidebar:
     st.success("✅ Система подключена и готова к работе.")
 
 # Функция создания PDF-документа
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import os
+import re
+
 def generate_pdf_report(title, content):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, height - 50, "Kobi Commercial Document")
+    # Регистрируем шрифт с поддержкой кириллицы (DejaVu Sans)
+    font_registered = False
+    try:
+        font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        if os.path.exists(font_path):
+            pdfmetrics.registerFont(TTFont('DejaVu', font_path))
+            c.setFont("DejaVu", 16)
+            font_registered = True
+        else:
+            c.setFont("Helvetica-Bold", 16)
+    except:
+        c.setFont("Helvetica-Bold", 16)
+        
+    # Заголовок
+    c.drawString(50, height - 50, title)
     
-    c.setFont("Helvetica", 11)
+    # Устанавливаем шрифт для текста
+    if font_registered:
+        c.setFont("DejaVu", 10)
+    else:
+        c.setFont("Helvetica", 10)
+        
     text_y = height - 90
-    for line in content.split('\n'):
+    
+    # Очищаем текст от Markdown-разметки (звездочек, решеток и т.д.)
+    clean_content = re.sub(r'[*#_`]', '', content)
+    
+    for line in clean_content.split('\n'):
         if text_y < 50:  
             c.showPage()
-            c.setFont("Helvetica", 11)
+            if font_registered:
+                c.setFont("DejaVu", 10)
+            else:
+                c.setFont("Helvetica", 10)
             text_y = height - 50
-        safe_line = line.encode('ascii', 'ignore').decode('ascii')
-        if safe_line.strip():
+            
+        if line.strip():
+            # Обрезаем слишком длинные строки, чтобы они не вылезали за границы страницы
+            safe_line = line.strip()[:90]
             c.drawString(50, text_y, safe_line)
-            text_y -= 20
+            text_y -= 18
         
     c.save()
     buffer.seek(0)
     return buffer
-
 # Инициализация истории чата
 if "messages" not in st.session_state:
     st.session_state.messages = []
