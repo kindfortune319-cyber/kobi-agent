@@ -1,4 +1,5 @@
-fpdf2
-openai
 streamlit
+openai
 pandas
+python-docx
+openpyxl
