@@ -69,63 +69,64 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+import io
+import os
+import urllib.request
+import re
+from fpdf import FPDF
+
+class PDF(FPDF):
+    def header(self):
+        pass
+
+    def footer(self):
+        pass
+
 def generate_pdf_report(title, content):
-    buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
+    pdf = PDF()
+    pdf.add_page()
     
-    # Универсальный путь: для Linux (Streamlit Cloud) используем /tmp, для Windows — текущую папку
-    font_filename = "DejaVuSans.ttf"
-    font_path = f"/tmp/{font_filename}" if os.name != 'nt' else font_filename
-    
-    font_registered = False
-    try:
-        # Если шрифта нет ни локально, ни во временной папке — скачиваем его за доли секунды
-        if not os.path.exists(font_path):
+    # Автоматически скачиваем стандартный TTF-шрифт с поддержкой кириллицы, если его нет
+    font_path = "DejaVuSans.ttf"
+    if not os.path.exists(font_path):
+        try:
             url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
             urllib.request.urlretrieve(url, font_path)
-            
-        if os.path.exists(font_path):
-            pdfmetrics.registerFont(TTFont('RussianFont', font_path))
-            font_registered = True
-    except Exception as e:
-        print(f"Ошибка загрузки шрифта: {e}")
-        
-    # Устанавливаем шрифт для заголовка
-    if font_registered:
-        c.setFont("RussianFont", 16)
+        except Exception as e:
+            print(f"Не удалось скачать шрифт: {e}")
+
+    # Подключаем юникодный шрифт в FPDF2
+    if os.path.exists(font_path):
+        pdf.add_font("DejaVu", "", font_path, uni=True)
+        pdf.set_font("DejaVu", size=16)
     else:
-        c.setFont("Helvetica-Bold", 16)
-        
-    c.drawString(50, height - 50, title)
-    
-    # Устанавливаем шрифт для текста
-    if font_registered:
-        c.setFont("RussianFont", 10)
+        pdf.set_font("Arial", size=16)
+
+    # Заголовок
+    pdf.cell(0, 10, txt=title, ln=True)
+    pdf.ln(5)
+
+    # Текст отчета
+    if os.path.exists(font_path):
+        pdf.set_font("DejaVu", size=10)
     else:
-        c.setFont("Helvetica", 10)
-        
-    text_y = height - 90
-    # Очищаем текст от лишней Markdown разметки
+        pdf.set_font("Arial", size=10)
+
     clean_content = re.sub(r'[*#_`]', '', content)
     
     for line in clean_content.split('\n'):
-        if text_y < 50:  
-            c.showPage()
-            if font_registered:
-                c.setFont("RussianFont", 10)
-            else:
-                c.setFont("Helvetica", 10)
-            text_y = height - 50
-            
         if line.strip():
-            safe_line = line.strip()[:90]
-            c.drawString(50, text_y, safe_line)
-            text_y -= 18
-        
-    c.save()
-    buffer.seek(0)
-    return buffer
+            # multi_cell корректно переносит длинные строки
+            pdf.multi_cell(0, 8, txt=line.strip())
+        else:
+            pdf.ln(4)
+
+    # Возвращаем байты PDF
+    pdf_output = pdf.output(dest='S')
+    if isinstance(pdf_output, str):
+        pdf_output = pdf_output.encode('latin1')
+    
+    return io.BytesIO(pdf_output)
 # Инициализация истории чата
 if "messages" not in st.session_state:
     st.session_state.messages = []
