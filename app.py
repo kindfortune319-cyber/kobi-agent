@@ -60,55 +60,67 @@ import urllib.request
 import urllib.request
 import zipfile
 
+import os
+import io
+import urllib.request
+import re
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
 def generate_pdf_report(title, content):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    font_path = "arial.ttf"
-    font_registered = False
+    # Универсальный путь: для Linux (Streamlit Cloud) используем /tmp, для Windows — текущую папку
+    font_filename = "DejaVuSans.ttf"
+    font_path = f"/tmp/{font_filename}" if os.name != 'nt' else font_filename
     
+    font_registered = False
     try:
-        # Если шрифта нет, пробуем распаковать из Arial.zip или скачать автоматически
+        # Если шрифта нет ни локально, ни во временной папке — скачиваем его за доли секунды
         if not os.path.exists(font_path):
-            if os.path.exists("Arial.zip"):
-                with zipfile.ZipFile("Arial.zip", 'r') as zip_ref:
-                    zip_ref.extractall(".")
-            else:
-                # Если и архива нет, скачиваем шрифт за секунду из интернета
-                url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
-                urllib.request.urlretrieve(url, font_path)
-                
+            url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+            urllib.request.urlretrieve(url, font_path)
+            
         if os.path.exists(font_path):
             pdfmetrics.registerFont(TTFont('RussianFont', font_path))
             font_registered = True
     except Exception as e:
-        print(f"Ошибка шрифта: {e}")
+        print(f"Ошибка загрузки шрифта: {e}")
         
-    # Заголовок
+    # Устанавливаем шрифт для заголовка
     if font_registered:
         c.setFont("RussianFont", 16)
-        c.drawString(50, height - 50, title)
     else:
         c.setFont("Helvetica-Bold", 16)
-        c.drawString(50, height - 50, transliterate(title))
+        
+    c.drawString(50, height - 50, title)
     
-    # Текст отчета
+    # Устанавливаем шрифт для текста
+    if font_registered:
+        c.setFont("RussianFont", 10)
+    else:
+        c.setFont("Helvetica", 10)
+        
     text_y = height - 90
+    # Очищаем текст от лишней Markdown разметки
     clean_content = re.sub(r'[*#_`]', '', content)
     
     for line in clean_content.split('\n'):
         if text_y < 50:  
             c.showPage()
+            if font_registered:
+                c.setFont("RussianFont", 10)
+            else:
+                c.setFont("Helvetica", 10)
             text_y = height - 50
             
         if line.strip():
-            if font_registered:
-                c.setFont("RussianFont", 10)
-                c.drawString(50, text_y, line.strip()[:90])
-            else:
-                c.setFont("Helvetica", 10)
-                c.drawString(50, text_y, transliterate(line.strip()[:90]))
+            safe_line = line.strip()[:90]
+            c.drawString(50, text_y, safe_line)
             text_y -= 18
         
     c.save()
