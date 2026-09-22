@@ -33,51 +33,76 @@ from reportlab.pdfbase.ttfonts import TTFont
 import os
 import re
 
+import io
+import os
+import re
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+def transliterate(text):
+    # Простой словарь для перевода кириллицы в латиницу на случай отсутствия шрифта
+    rus_to_eng = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+        'з': 'z', 'и': 'i', 'й': 'j', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+        'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'ts',
+        'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh',
+        'З': 'Z', 'И': 'I', 'Й': 'J', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O',
+        'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'H', 'Ц': 'Ts',
+        'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch', 'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
+    }
+    return ''.join([rus_to_eng.get(char, char) for char in text])
+
 def generate_pdf_report(title, content):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    # Регистрируем шрифт с поддержкой кириллицы (DejaVu Sans)
     font_registered = False
     try:
-        font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-        if os.path.exists(font_path):
-            pdfmetrics.registerFont(TTFont('DejaVu', font_path))
-            c.setFont("DejaVu", 16)
-            font_registered = True
-        else:
-            c.setFont("Helvetica-Bold", 16)
+        # Проверяем пути для Linux и Windows
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "C:/Windows/Fonts/arial.ttf"
+        ]
+        for path in font_paths:
+            if os.path.exists(path):
+                pdfmetrics.registerFont(TTFont('CustomFont', path))
+                font_registered = True
+                break
     except:
-        c.setFont("Helvetica-Bold", 16)
+        pass
         
     # Заголовок
-    c.drawString(50, height - 50, title)
-    
-    # Устанавливаем шрифт для текста
     if font_registered:
-        c.setFont("DejaVu", 10)
+        c.setFont("CustomFont", 16)
+    else:
+        c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, height - 50, title if font_registered else transliterate(title))
+    
+    # Текст отчета
+    if font_registered:
+        c.setFont("CustomFont", 10)
     else:
         c.setFont("Helvetica", 10)
         
     text_y = height - 90
-    
-    # Очищаем текст от Markdown-разметки (звездочек, решеток и т.д.)
     clean_content = re.sub(r'[*#_`]', '', content)
     
     for line in clean_content.split('\n'):
         if text_y < 50:  
             c.showPage()
             if font_registered:
-                c.setFont("DejaVu", 10)
+                c.setFont("CustomFont", 10)
             else:
                 c.setFont("Helvetica", 10)
             text_y = height - 50
             
         if line.strip():
-            # Обрезаем слишком длинные строки, чтобы они не вылезали за границы страницы
-            safe_line = line.strip()[:90]
-            c.drawString(50, text_y, safe_line)
+            print_line = line.strip() if font_registered else transliterate(line.strip())
+            c.drawString(50, text_y, print_line[:90])
             text_y -= 18
         
     c.save()
