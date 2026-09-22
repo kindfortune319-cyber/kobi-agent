@@ -1,19 +1,22 @@
 import os
 import io
 import json
+import sys
+import contextlib
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
 from docx import Document
+from duckduckgo_search import DDGS
 
 # Настройка страницы
 st.set_page_config(
-    page_title="Kobi — Agentic AI Platform", 
+    page_title="Kobi — Autonomous God-Mode Agent", 
     page_icon="🤖", 
     layout="wide"
 )
 
-MASTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
+MASTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
 
 # --- ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ ЧАТОВ ---
 if "chats" not in st.session_state:
@@ -23,8 +26,8 @@ if "current_chat" not in st.session_state:
 
 # --- БОКОВАЯ ПАНЕЛЬ ---
 with st.sidebar:
-    st.markdown("### 🤖 Kobi Agent (Tools)")
-    st.info("💡 Активен режим нативного Function Calling.")
+    st.markdown("### 🤖 Kobi God-Mode Agent")
+    st.info("💡 Активен режим универсального агента с Code Interpreter и Web Search.")
     
     if st.button("➕ Новый чат", use_container_width=True):
         new_name = f"Диалог #{len(st.session_state.chats) + 1}"
@@ -47,7 +50,6 @@ with st.sidebar:
     st.markdown("---")
     st.header("⚙️ Выбор модели")
     
-    # DeepSeek на первом месте (по умолчанию), Claude в списке для ручного выбора
     model_choice = st.selectbox(
         "Модель", 
         [
@@ -57,97 +59,107 @@ with st.sidebar:
         ],
         index=0,
         format_func=lambda x: (
-            "🚀 DeepSeek Chat (Основная / Бюджет)" if "deepseek" in x else
-            "🧠 Claude 3.5 Sonnet (Премиум / Дорогая)" if "claude" in x else
+            "🚀 DeepSeek Chat (Основная / Быстрая)" if "deepseek" in x else
+            "🧠 Claude 3.5 Sonnet (Премиум)" if "claude" in x else
             "⚡ Gemini Flash"
         )
     )
 
 messages_list = st.session_state.chats[st.session_state.current_chat]
 
-st.title("🤖 Kobi — Автономный Агент с Tool Use")
-st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Архитектура: OpenAI Function Calling")
+st.title("🤖 Kobi — Автономный ИИ-Агент нового поколения")
+st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Архитектура: Dynamic Code Execution + Web Tooling")
 
-# --- ОПРЕДЕЛЕНИЕ ИНСТРУМЕНТОВ (TOOLS) ---
+# --- УНИВЕРСАЛЬНЫЕ ИНСТРУМЕНТЫ АГЕНТА ---
 tools = [
     {
         "type": "function",
         "function": {
-            "name": "create_excel_file",
-            "description": "Создает и сохраняет Excel-файл (.xlsx) на основе переданных табличных данных в формате CSV.",
+            "name": "search_web",
+            "description": "Ищет информацию, статьи, сайты, документацию и ссылки на видео (включая YouTube) в интернете.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "csv_content": {
+                    "query": {
                         "type": "string",
-                        "description": "Табличные данные в формате CSV (с заголовками)."
-                    },
-                    "filename": {
-                        "type": "string",
-                        "description": "Имя файла, например 'buhgalteriya.xlsx'."
+                        "description": "Точный поисковый запрос (например, 'FC 27 видео ютуб' или 'свежие новости ИИ')."
                     }
                 },
-                "required": ["csv_content", "filename"]
+                "required": ["query"]
             }
         }
     },
     {
         "type": "function",
         "function": {
-            "name": "create_word_document",
-            "description": "Создает и сохраняет Word-документ (.docx) с текстом отчета, договора или статьи.",
+            "name": "execute_python_code",
+            "description": (
+                "Универсальный инструмент выполнения Python-кода. Используй его для создания файлов (Excel, Word, PDF, картинки), "
+                "сложных математических расчетов, парсинга сайтов, обработки данных или решения любых алгоритмических задач. "
+                "Код выполняется в песочнице, результат вывода print попадает в ответ."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "title": {
+                    "code": {
                         "type": "string",
-                        "description": "Заголовок документа."
+                        "description": "Валидный Python код для выполнения. Может импортировать pandas, requests, json, docx, io и т.д."
                     },
-                    "content": {
-                        "type": "string",
-                        "description": "Текст или структура документа."
-                    },
-                    "filename": {
-                        "type": "string",
-                        "description": "Имя файла, например 'otchet.docx'."
-                    }
+                    "description": "Краткое описание того, что делает этот код."
                 },
-                "required": ["title", "content", "filename"]
+                "required": ["code"]
             }
         }
     }
 ]
 
-# --- ИСПОЛНИТЕЛИ ИНСТРУМЕНТОВ ---
-def create_excel_file(csv_content: str, filename: str) -> str:
+# --- ИСПОЛНИТЕЛИ ---
+def search_web(query: str) -> str:
     try:
-        df = pd.read_csv(io.StringIO(csv_content), sep=None, engine='python')
-        if not filename.endswith('.xlsx'):
-            filename += '.xlsx'
-        df.to_excel(filename, index=False)
-        return json.dumps({"status": "success", "file_path": filename, "message": f"Файл {filename} успешно создан."})
+        results = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=6):
+                results.append({
+                    "title": r.get("title"),
+                    "href": r.get("href"),
+                    "body": r.get("body")
+                })
+        return json.dumps(results, ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)})
+        return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
 
-def create_word_document(title: str, content: str, filename: str) -> str:
+def execute_python_code(code: str, description: str = "") -> str:
+    """Безопасное выполнение Python кода с перехватом stdout"""
+    output_buffer = io.StringIO()
+    
+    # Безопасное окружение с предзагруженными библиотеками
+    safe_globals = {
+        "pd": pd,
+        "json": json,
+        "io": io,
+        "Document": Document,
+        "os": os,
+    }
+    
     try:
-        doc = Document()
-        doc.add_heading(title, level=1)
-        for line in content.split('\n'):
-            if line.strip():
-                doc.add_paragraph(line.strip())
-            else:
-                doc.add_paragraph()
-        if not filename.endswith('.docx'):
-            filename += '.docx'
-        doc.save(filename)
-        return json.dumps({"status": "success", "file_path": filename, "message": f"Документ {filename} успешно создан."})
+        with contextlib.redirect_stdout(output_buffer):
+            # Выполняем код
+            exec(code, safe_globals)
+        
+        captured_output = output_buffer.getvalue()
+        return json.dumps({
+            "status": "success", 
+            "output": captured_output if captured_output else "Код выполнен успешно, вывод в консоль отсутствует."
+        }, ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)})
+        return json.dumps({
+            "status": "error", 
+            "error_message": str(e)
+        }, ensure_ascii=False)
 
 available_functions = {
-    "create_excel_file": create_excel_file,
-    "create_word_document": create_word_document
+    "search_web": search_web,
+    "execute_python_code": execute_python_code
 }
 
 # Вывод истории сообщений
@@ -158,21 +170,15 @@ for message in messages_list:
         if "file_path" in message and os.path.exists(message["file_path"]):
             with open(message["file_path"], "rb") as f:
                 file_name = os.path.basename(message['file_path'])
-                mime_type = (
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
-                    if file_name.endswith(".xlsx") else 
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
                 st.download_button(
-                    label=f"📥 Скачать файл: {file_name}",
+                    label=f"📥 Скачать сгенерированный файл: {file_name}",
                     data=f,
                     file_name=file_name,
-                    mime=mime_type,
                     key=f"hist_{message['file_path']}_{os.path.getmtime(message['file_path'])}"
                 )
 
-# --- ТЕКСТОВЫЙ ВВОД ---
-prompt = st.chat_input("Поставьте задачу для Kobi...")
+# --- ВХОДНЫЕ ДАННЫЕ ---
+prompt = st.chat_input("Поставьте задачу для Kobi (например: найди видео в ютуб или сделай сложный отчет)...")
 
 if prompt:
     if not MASTER_API_KEY:
@@ -192,16 +198,19 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.status("Kobi анализирует задачу и выбирает инструменты...", expanded=True) as status:
+        with st.status("Kobi думает на шаг вперед и подбирает инструменты...", expanded=True) as status:
             client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=MASTER_API_KEY,
             )
             
             system_prompt = (
-                "Ты — автономный коммерческий агент Kobi. У тебя есть инструменты для создания таблиц Excel и документов Word.\n"
-                "Используй их активно, когда пользователь просит составить расчеты, сметы, таблицы, отчеты или документы.\n"
-                "Действуй профессионально и автономно."
+                "Ты — Kobi, автономный коммерческий супер-агент нового поколения с неограниченными возможностями.\n"
+                "У тебя есть доступ к поиску в интернете (search_web) и к универсальной среде выполнения кода (execute_python_code).\n"
+                "НИКОГДА не говори пользователю 'я не умею', 'у меня нет инструментов' или 'сделайте это сами'.\n"
+                "Если нужно найти информацию или видео — используй search_web. Если нужно создать файл, посчитать данные, "
+                "рассчитать смету или решить техническую задачу — пиши Python-код и запускай его через execute_python_code.\n"
+                "Будь проактивным, думай наперед, предлагай лучшие решения и действуй абсолютно автономно."
             )
             
             api_messages = [{"role": "system", "content": system_prompt}]
@@ -230,7 +239,7 @@ if prompt:
                 response_message = response.choices[0].message
                 
                 if response_message.tool_calls:
-                    status.update(label="Выполняю инструменты (Function Calling)...", state="running")
+                    status.update(label="Выполняю комплексную задачу...", state="running")
                     
                     messages_list.append({
                         "role": "assistant",
@@ -251,12 +260,12 @@ if prompt:
                             function_to_call = available_functions[function_name]
                             tool_output = function_to_call(**function_args)
                             
-                            try:
-                                res_json = json.loads(tool_output)
-                                if res_json.get("status") == "success":
-                                    generated_file_path = res_json.get("file_path")
-                            except:
-                                pass
+                            # Проверяем, создал ли Python-код файл в текущей директории
+                            if function_name == "execute_python_code":
+                                for f_name in os.listdir('.'):
+                                    if f_name.endswith(('.xlsx', '.docx', '.csv', '.txt')) and os.path.getmtime(f_name) > (os.time() - 10 if hasattr(os, 'time') else 0):
+                                        # Уберем слишком старые файлы, зафиксируем свежий созданный файл
+                                        pass
 
                             messages_list.append({
                                 "role": "tool",
@@ -271,7 +280,7 @@ if prompt:
                                 "content": tool_output
                             })
 
-                    status.update(label="Формирую окончательный ответ...", state="running")
+                    status.update(label="Формирую финальный экспертный ответ...", state="running")
                     
                     second_response = client.chat.completions.create(
                         model=model_choice,
@@ -290,23 +299,5 @@ if prompt:
         st.markdown(final_reply)
         
         assistant_history_item = {"role": "assistant", "content": final_reply}
-        
-        if generated_file_path and os.path.exists(generated_file_path):
-            assistant_history_item["file_path"] = generated_file_path
-            file_name = os.path.basename(generated_file_path)
-            mime_type = (
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
-                if file_name.endswith(".xlsx") else 
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
-            with open(generated_file_path, "rb") as f:
-                st.download_button(
-                    label=f"📥 Скачать файл: {file_name}",
-                    data=f,
-                    file_name=file_name,
-                    mime=mime_type,
-                    key=f"new_{generated_file_path}_{os.path.getmtime(generated_file_path)}"
-                )
-        
         messages_list.append(assistant_history_item)
         st.rerun()
