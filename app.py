@@ -1,8 +1,7 @@
 import os
 import io
 import json
-import base64
-import requests
+import urllib.parse
 import concurrent.futures
 import contextlib
 import streamlit as st
@@ -14,7 +13,7 @@ from PIL import Image, ImageOps, ImageFilter
 
 # Настройка страницы
 st.set_page_config(
-    page_title="Kobi — Supreme Multi-Model Consensus", 
+    page_title="Kobi Supreme Agent", 
     page_icon="🤖", 
     layout="wide"
 )
@@ -30,7 +29,7 @@ if "current_chat" not in st.session_state:
 # --- БОКОВАЯ ПАНЕЛЬ ---
 with st.sidebar:
     st.markdown("### 🤖 Kobi Supreme Agent")
-    st.info("💡 Режим: Мульти-Модельный Консенсус + Flux.1 Native API + Python Sandbox.")
+    st.info("💡 Стабильный режим: Мульти-модельный консенсус + Надежная генерация.")
     
     if st.button("➕ Новый чат", use_container_width=True):
         new_name = f"Диалог #{len(st.session_state.chats) + 1}"
@@ -70,10 +69,10 @@ with st.sidebar:
 
 messages_list = st.session_state.chats[st.session_state.current_chat]
 
-st.title("🤖 Kobi — Мульти-агентный комплекс (Supreme Consensus)")
-st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Движок фото: **OpenRouter FLUX.1 Schnell**")
+st.title("🤖 Kobi — Мульти-агентный комплекс")
+st.caption(f"Текущий чат: **{st.session_state.current_chat}**")
 
-# --- ИНСТРУМЕНТЫ АГЕНТА (Исправлены схемы под строгий стандарт OpenAI) ---
+# --- ИНСТРУМЕНТЫ АГЕНТА ---
 tools = [
     {
         "type": "function",
@@ -96,7 +95,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "generate_image",
-            "description": "Генерирует фотореалистичное изображение через официальный движок Flux.1 на OpenRouter.",
+            "description": "Генерирует качественное изображение по описанию.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -165,36 +164,10 @@ def search_web(query: str) -> str:
     return json.dumps(results, ensure_ascii=False)
 
 def generate_image(prompt: str) -> str:
-    enhanced_prompt = f"{prompt}, highly detailed, 8k resolution, photorealistic, professional sports photography, perfect anatomy, masterpiece"
-    try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/images",
-            headers={
-                "Authorization": f"Bearer {MASTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://kobi-agent.streamlit.app",
-                "X-Title": "Kobi Supreme Agent"
-            },
-            json={
-                "model": "black-forest-labs/flux-1-schnell",
-                "prompt": enhanced_prompt,
-                "aspect_ratio": "16:9"
-            }
-        )
-        if response.status_code == 200:
-            res_data = response.json()
-            if "data" in res_data and len(res_data["data"]) > 0:
-                item = res_data["data"][0]
-                if "b64_json" in item:
-                    img_bytes = base64.b64decode(item["b64_json"])
-                    file_name = f"flux_gen_{os.urandom(4).hex()}.png"
-                    with open(file_name, "wb") as f:
-                        f.write(img_bytes)
-                    return json.dumps({"status": "success", "file_path": file_name, "prompt": prompt}, ensure_ascii=False)
-        
-        return json.dumps({"status": "error", "error_message": f"OpenRouter Image API Error: {response.text}"}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"status": "error", "error_message": str(e)}, ensure_ascii=False)
+    enhanced_prompt = f"{prompt}, photorealistic, highly detailed, 8k, professional photography"
+    encoded = urllib.parse.quote(enhanced_prompt)
+    image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&nologo=true&seed=1337"
+    return json.dumps({"status": "success", "image_url": image_url, "prompt": prompt}, ensure_ascii=False)
 
 def execute_python_code(code: str, description: str = "") -> str:
     output_buffer = io.StringIO()
@@ -228,6 +201,8 @@ for message in messages_list:
     if message["role"] in ["user", "assistant"]:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            if "image_url" in message:
+                st.image(message["image_url"])
             if "file_path" in message and os.path.exists(message["file_path"]):
                 if message["file_path"].lower().endswith(('.png', '.jpg', '.jpeg')):
                     st.image(message["file_path"])
@@ -241,7 +216,7 @@ for message in messages_list:
                     )
 
 # --- ВХОДНЫЕ ДАННЫЕ ---
-prompt = st.chat_input("Поставьте задачу для Kobi (поиск, генерация фото на Flux, аналитика)...")
+prompt = st.chat_input("Поставьте задачу для Kobi...")
 
 if prompt:
     if not MASTER_API_KEY:
@@ -270,9 +245,9 @@ if prompt:
             system_prompt = (
                 "Ты — Kobi, коммерческий ИИ-агент высшего класса.\n"
                 "Инструменты:\n"
-                "- search_web: поиск информации и ссылок.\n"
-                "- generate_image: создание фото на Flux.1 через официальный API OpenRouter.\n"
-                "- execute_python_code: вычисления и работа с файлами."
+                "- search_web: поиск информации.\n"
+                "- generate_image: генерация картинок.\n"
+                "- execute_python_code: работа с кодом и файлами."
             )
             
             api_messages = [{"role": "system", "content": system_prompt}]
@@ -289,11 +264,11 @@ if prompt:
 
             final_reply = ""
             latest_file_path = None
+            generated_image_url = None
 
             try:
-                # --- ЛОГИКА МУЛЬТИ-МОДЕЛЬНОГО КОНСЕНСУСА ---
                 if model_choice == "ensemble":
-                    status.update(label="👑 [Консенсус]: Параллельный запрос к DeepSeek, Claude, GPT-4o и Gemini...", state="running")
+                    status.update(label="👑 [Консенсус]: Запрос к DeepSeek, Claude, GPT-4o и Gemini...", state="running")
                     
                     target_models = [
                         ("DeepSeek", "deepseek/deepseek-chat"),
@@ -332,16 +307,15 @@ if prompt:
                     if tool_call_msg:
                         response_message = tool_call_msg
                     else:
-                        status.update(label="👑 [Консенсус]: Мастер-синтез лучших идей всех моделей...", state="running")
+                        status.update(label="👑 [Консенсус]: Мастер-синтез ответов...", state="running")
                         opinions_text = "\n\n".join([
                             f"--- Вариант от {lbl} ---\n{msg.content if msg.content else 'Нет ответа'}"
                             for lbl, msg in responses_map.items()
                         ])
 
                         synthesis_prompt = (
-                            f"Ниже приведены ответы 4-х разных моделей ИИ на запрос пользователя:\n\n{opinions_text}\n\n"
-                            "ЗАДАЧА: Проанализируй все 4 ответа, убери ошибки и галлюцинации, объедини лучшие мысли "
-                            "и дай один ИДЕАЛЬНЫЙ, экспертный и исчерпывающий ответ."
+                            f"Ответы 4 моделей:\n\n{opinions_text}\n\n"
+                            "Сделай один идеальный экспертный ответ."
                         )
 
                         synth_messages = api_messages + [{"role": "user", "content": synthesis_prompt}]
@@ -350,7 +324,6 @@ if prompt:
                             messages=synth_messages
                         )
                         response_message = synth_res.choices[0].message
-
                 else:
                     res = client.chat.completions.create(
                         model=model_choice,
@@ -360,9 +333,8 @@ if prompt:
                     )
                     response_message = res.choices[0].message
 
-                # --- ОБРАБОТКА ВЫЗОВА ИНСТРУМЕНТОВ ---
                 if response_message.tool_calls:
-                    status.update(label="Агент выполняет инструменты (Flux / Search / Code)...", state="running")
+                    status.update(label="Выполнение инструментов...", state="running")
                     
                     messages_list.append({
                         "role": "assistant",
@@ -385,8 +357,11 @@ if prompt:
                             
                             try:
                                 out_json = json.loads(tool_output)
-                                if isinstance(out_json, dict) and out_json.get("file_path"):
-                                    latest_file_path = out_json["file_path"]
+                                if isinstance(out_json, dict):
+                                    if out_json.get("image_url"):
+                                        generated_image_url = out_json["image_url"]
+                                    if out_json.get("files"):
+                                        latest_file_path = out_json["files"][-1]
                             except:
                                 pass
 
@@ -403,7 +378,7 @@ if prompt:
                                 "content": tool_output
                             })
 
-                    status.update(label="Завершение генерации результата...", state="running")
+                    status.update(label="Финализация...", state="running")
                     
                     second_response = client.chat.completions.create(
                         model="deepseek/deepseek-chat" if model_choice == "ensemble" else model_choice,
@@ -414,7 +389,7 @@ if prompt:
                     final_reply = response_message.content
 
                 if model_choice == "ensemble":
-                    final_reply = f"👑 **[Результат Мульти-Модельного Синтеза DeepSeek + Claude + GPT-4o + Gemini]**\n\n{final_reply}"
+                    final_reply = f"👑 **[Мульти-Модельный Консенсус]**\n\n{final_reply}"
 
             except Exception as e:
                 st.error(f"⚠️ Ошибка выполнения: {e}")
@@ -424,11 +399,16 @@ if prompt:
 
         st.markdown(final_reply)
         
+        if generated_image_url:
+            st.image(generated_image_url)
+
         assistant_item = {"role": "assistant", "content": final_reply}
+        if generated_image_url:
+            assistant_item["image_url"] = generated_image_url
         if latest_file_path and os.path.exists(latest_file_path):
             assistant_item["file_path"] = latest_file_path
             if latest_file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-                st.image(latest_file_path, caption="Генерация OpenRouter FLUX.1")
+                st.image(latest_file_path)
             with open(latest_file_path, "rb") as f:
                 file_name = os.path.basename(latest_file_path)
                 st.download_button(
