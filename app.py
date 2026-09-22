@@ -70,7 +70,8 @@ st.caption(f"Текущий чат: **{st.session_state.current_chat}**")
 def generate_word_report(title, content):
     doc = Document()
     doc.add_heading(title, level=1)
-    clean_content = re.sub(r'[*#_`]', '', content)
+    BT = chr(96)
+    clean_content = re.sub(rf'[*#_{BT}]', '', content)
     for line in clean_content.split('\n'):
         if line.strip():
             doc.add_paragraph(line.strip())
@@ -125,11 +126,94 @@ if prompt:
     with st.chat_message("assistant"):
         with st.status("Kobi обрабатывает задачу...", expanded=True) as status:
             client = OpenAI(
-                base_url="https://openrouter.ai/api/v1",
+                base_url="[https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)",
                 api_key=MASTER_API_KEY,
             )
             
+            TB = chr(96) * 3
             system_prompt = (
                 "Ты — автономный коммерческий агент Kobi. Твоя задача — решать бизнес-задачи.\n"
                 "СТРОГОЕ ПРАВИЛО:\n"
-                "1. Если просят таблицу, смету, расчеты — начни ответ с тега [EXCEL] и выведи данные в виде CSV-таблицы внутри блока ```csv ...
+                f"1. Если просят таблицу, смету, расчеты — начни ответ с тега [EXCEL] и выведи данные в виде CSV-таблицы внутри блока {TB}csv ... {TB}.\n"
+                "2. Если просят документ, презентацию, отчет, структуру — начни с тега [PDF].\n"
+                "3. Для остальных ответов используй [TEXT].\n"
+                "НИКОГДА не выводи исходный код Python."
+            )
+            
+            api_messages = [{"role": "system", "content": system_prompt}] + [
+                {"role": m["role"], "content": m["content"]} for m in messages_list
+            ]
+            
+            try:
+                response = client.chat.completions.create(
+                    model=model_choice,
+                    messages=api_messages
+                )
+                full_reply = response.choices[0].message.content
+            except Exception as e:
+                st.error(f"⚠️ Ошибка от провайдера модели `{model_choice}`: {e}")
+                st.stop()
+            
+            clean_prompt_check = prompt.lower()
+            if "[PDF]" not in full_reply and "[EXCEL]" not in full_reply and any(w in clean_prompt_check for w in ["файл", "презентац", "структур", "отчет", "документ", "смет", "таблиц"]):
+                full_reply = "[PDF]\n" + full_reply
+
+            skill_tag = "[TEXT]"
+            reply_text = full_reply
+            csv_data = None
+            
+            if "[EXCEL]" in full_reply:
+                skill_tag = "[EXCEL]"
+                parts = full_reply.split(TB + "csv")
+                reply_text = parts[0].replace("[EXCEL]", "").strip()
+                if len(parts) > 1:
+                    sub_parts = parts[1].split(TB)
+                    csv_data = sub_parts[0].strip()
+            elif "[PDF]" in full_reply:
+                skill_tag = "[PDF]"
+                reply_text = full_reply.replace("[PDF]", "").strip()
+            elif "[TEXT]" in full_reply:
+                skill_tag = "[TEXT]"
+                reply_text = full_reply.replace("[TEXT]", "").strip()
+
+            file_path = None
+            if skill_tag == "[EXCEL]" and csv_data:
+                status.update(label="Компилирую Excel-файл...", state="running")
+                file_path = "Коммерческий_отчет_Kobi.xlsx"
+                try:
+                    df = pd.read_csv(io.StringIO(csv_data), sep=None, engine='python')
+                    df.to_excel(file_path, index=False)
+                except Exception:
+                    df = pd.DataFrame([["Ошибка", "Не удалось распарсить CSV"]])
+                    df.to_excel(file_path, index=False)
+            elif skill_tag == "[PDF]":
+                status.update(label="Генерация Word-документа...", state="running")
+                file_path = "Kobi_Document.docx"
+                word_buffer = generate_word_report("Документ от Kobi AI", reply_text)
+                with open(file_path, "wb") as f:
+                    f.write(word_buffer.getbuffer())
+
+            status.update(label="Готово!", state="complete", expanded=False)
+
+        st.markdown(reply_text)
+        
+        if file_path and os.path.exists(file_path):
+            file_name = os.path.basename(file_path)
+            mime_type = (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
+                if file_name.endswith(".xlsx") else 
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            with open(file_path, "rb") as f:
+                st.download_button(
+                    label=f"📥 Скачать файл: {file_name}",
+                    data=f,
+                    file_name=file_name,
+                    mime=mime_type,
+                    key=f"new_{file_path}_{os.path.getmtime(file_path)}"
+                )
+            messages_list.append({"role": "assistant", "content": reply_text, "file_path": file_path})
+        else:
+            messages_list.append({"role": "assistant", "content": reply_text})
+        
+        st.rerun()
