@@ -55,26 +55,31 @@ def transliterate(text):
     }
     return ''.join([rus_to_eng.get(char, char) for char in text])
 
+import urllib.request
+
 def generate_pdf_report(title, content):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
+    font_path = "DejaVuSans.ttf"
     font_registered = False
+    
     try:
-        # Ищем шрифт в папке проекта или в системе
-        font_paths = ["arial.ttf", "dejavu.ttf", "C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
-        for path in font_paths:
-            if os.path.exists(path):
-                pdfmetrics.registerFont(TTFont('CustomFont', path))
-                font_registered = True
-                break
-    except:
-        pass
+        # Если файла шрифта нет, скачиваем его автоматически при генерации
+        if not os.path.exists(font_path):
+            url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+            urllib.request.urlretrieve(url, font_path)
+            
+        if os.path.exists(font_path):
+            pdfmetrics.registerFont(TTFont('DejaVu', font_path))
+            font_registered = True
+    except Exception as e:
+        print(f"Ошибка загрузки шрифта: {e}")
         
     # Заголовок
     if font_registered:
-        c.setFont("CustomFont", 16)
+        c.setFont("DejaVu", 16)
         c.drawString(50, height - 50, title)
     else:
         c.setFont("Helvetica-Bold", 16)
@@ -91,7 +96,7 @@ def generate_pdf_report(title, content):
             
         if line.strip():
             if font_registered:
-                c.setFont("CustomFont", 10)
+                c.setFont("DejaVu", 10)
                 c.drawString(50, text_y, line.strip()[:90])
             else:
                 c.setFont("Helvetica", 10)
