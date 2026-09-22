@@ -191,4 +191,5 @@ if prompt:
                 skill_tag = "[EXCEL]"
                 parts = full_reply.split("```csv")
                 reply_text = parts[0].replace("[EXCEL]", "").strip()
-                if len(parts) >
+                if len(parts) > 1:
+                    csv_data = parts[1].split("
