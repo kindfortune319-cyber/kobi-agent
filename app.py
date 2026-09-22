@@ -1,14 +1,11 @@
 import os
 import io
 import json
-import sys
-import contextlib
-import urllib.request
-import urllib.parse
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
 from docx import Document
+from duckduckgo_search import DDGS
 
 # Настройка страницы
 st.set_page_config(
@@ -28,7 +25,7 @@ if "current_chat" not in st.session_state:
 # --- БОКОВАЯ ПАНЕЛЬ ---
 with st.sidebar:
     st.markdown("### 🤖 Kobi God-Mode Agent")
-    st.info("💡 Активен режим универсального агента с Code Interpreter и Web Search.")
+    st.info("💡 Активен режим коммерческого агента с чистым интерфейсом.")
     
     if st.button("➕ Новый чат", use_container_width=True):
         new_name = f"Диалог #{len(st.session_state.chats) + 1}"
@@ -69,15 +66,15 @@ with st.sidebar:
 messages_list = st.session_state.chats[st.session_state.current_chat]
 
 st.title("🤖 Kobi — Автономный ИИ-Агент нового поколения")
-st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Архитектура: Dynamic Code Execution + Built-in Web Tooling")
+st.caption(f"Текущий чат: **{st.session_state.current_chat}** | Инструменты: Web Search + Python Sandbox")
 
-# --- УНИВЕРСАЛЬНЫЕ ИНСТРУМЕНТЫ АГЕНТА ---
+# --- ИНСТРУМЕНТЫ АГЕНТА ---
 tools = [
     {
         "type": "function",
         "function": {
             "name": "search_web",
-            "description": "Ищет информацию, статьи, сайты, документацию и ссылки в интернете без использования сторонних библиотек.",
+            "description": "Ищет информацию, статьи, сайты и ссылки на видео (включая YouTube) в интернете.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -89,109 +86,36 @@ tools = [
                 "required": ["query"]
             }
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "execute_python_code",
-            "description": (
-                "Универсальный инструмент выполнения Python-кода. Используй его для создания файлов (Excel, Word, PDF, картинки), "
-                "сложных математических расчетов, парсинга сайтов, обработки данных или решения любых алгоритмических задач. "
-                "Код выполняется в песочнице, результат вывода print попадает в ответ."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "Валидный Python код для выполнения. Может импортировать pandas, requests, json, docx, io и т.д."
-                    },
-                    "description": "Краткое описание того, что делает этот код."
-                },
-                "required": ["code"]
-            }
-        }
     }
 ]
 
-# --- ИСПОЛНИТЕЛИ (БЕЗ ВНЕШНИХ ЗАВИСИМОСТЕЙ) ---
+# --- ИСПОЛНИТЕЛИ ---
 def search_web(query: str) -> str:
     try:
-        encoded_query = urllib.parse.quote(query)
-        url = f"https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1&skip_disambig=1"
-        req = urllib.request.Request(
-            url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        )
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            
         results = []
-        if data.get("AbstractText"):
-            results.append({
-                "title": data.get("Heading", "Результат"),
-                "href": data.get("AbstractURL", ""),
-                "body": data.get("AbstractText")
-            })
-        for topic in data.get("RelatedTopics", []):
-            if isinstance(topic, dict) and "Text" in topic:
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=5):
                 results.append({
-                    "title": topic.get("Text", "")[:60] + "...",
-                    "href": topic.get("FirstURL", ""),
-                    "body": topic.get("Text", "")
+                    "title": r.get("title"),
+                    "href": r.get("href"),
+                    "body": r.get("body")
                 })
-        
-        if not results:
-            results.append({
-                "title": f"Поиск: {query}",
-                "href": f"https://duckduckgo.com/?q={encoded_query}",
-                "body": "Прямая ссылка на результаты поиска в DuckDuckGo."
-            })
-            
-        return json.dumps(results[:5], ensure_ascii=False)
+        return json.dumps(results, ensure_ascii=False)
     except Exception as e:
-        return json.dumps([{"error": str(e), "fallback_url": f"https://duckduckgo.com/?q={urllib.parse.quote(query)}"}], ensure_ascii=False)
-
-def execute_python_code(code: str, description: str = "") -> str:
-    """Безопасное выполнение Python кода с перехватом stdout"""
-    output_buffer = io.StringIO()
-    
-    safe_globals = {
-        "pd": pd,
-        "json": json,
-        "io": io,
-        "Document": Document,
-        "os": os,
-    }
-    
-    try:
-        with contextlib.redirect_stdout(output_buffer):
-            exec(code, safe_globals)
-        
-        captured_output = output_buffer.getvalue()
-        return json.dumps({
-            "status": "success", 
-            "output": captured_output if captured_output else "Код выполнен успешно, вывод в консоль отсутствует."
-        }, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({
-            "status": "error", 
-            "error_message": str(e)
-        }, ensure_ascii=False)
+        return json.dumps([{"error": str(e)}], ensure_ascii=False)
 
 available_functions = {
-    "search_web": search_web,
-    "execute_python_code": execute_python_code
+    "search_web": search_web
 }
 
-# Вывод истории сообщений
+# --- ВЫВОД ИСТОРИИ ЧАТА (ОТФИЛЬТРОВАННЫЙ, ТОЛЬКО USER И ASSISTANT) ---
 for message in messages_list:
-    with st.chat_message(message["role"]):
-        if message.get("content"):
+    if message["role"] in ["user", "assistant"]:
+        with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
 # --- ВХОДНЫЕ ДАННЫЕ ---
-prompt = st.chat_input("Поставьте задачу для Kobi...")
+prompt = st.chat_input("Поставьте задачу для Kobi (например: найди видео в ютуб про...)")
 
 if prompt:
     if not MASTER_API_KEY:
@@ -211,19 +135,18 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.status("Kobi думает на шаг вперед и подбирает инструменты...", expanded=True) as status:
+        with st.status("Kobi ищет информацию в сети...", expanded=True) as status:
             client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=MASTER_API_KEY,
             )
             
             system_prompt = (
-                "Ты — Kobi, автономный коммерческий супер-агент нового поколения с неограниченными возможностями.\n"
-                "У тебя есть доступ к поиску в интернете (search_web) и к универсальной среде выполнения кода (execute_python_code).\n"
-                "НИКОГДА не говори пользователю 'я не умею', 'у меня нет инструментов' или 'сделайте это сами'.\n"
-                "Если нужно найти информацию — используй search_web. Если нужно создать файл, посчитать данные, "
-                "решить техническую задачу — пиши Python-код и запускай его через execute_python_code.\n"
-                "Будь проактивным, думай наперед, предлагай лучшие решения и действуй абсолютно автономно."
+                "Ты — Kobi, элитный коммерческий ИИ-агент нового поколения.\n"
+                "Когда пользователь просит найти видео на YouTube, статьи, сайты или любую информацию, ты ОБЯЗАН использовать инструмент search_web.\n"
+                "Получив результаты поиска, выбери самые релевантные ссылки и выдай пользователю КРАСИВЫЙ, оформленный ответ.\n"
+                "ОБЯЗАТЕЛЬНО оформляй ссылки в виде кликабельных Markdown-ссылок прямо в тексте, например: [Название видео](https://youtube.com/...).\n"
+                "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО показывать пользователю сырой JSON, технические детали, массивы скобок `[]` или отправлять его на страницы поисковиков вроде duckduckgo.com. Только чистый, готовый результат с прямыми ссылками."
             )
             
             api_messages = [{"role": "system", "content": system_prompt}]
@@ -251,7 +174,7 @@ if prompt:
                 response_message = response.choices[0].message
                 
                 if response_message.tool_calls:
-                    status.update(label="Выполняю комплексную задачу...", state="running")
+                    status.update(label="Обрабатываю результаты поиска...", state="running")
                     
                     messages_list.append({
                         "role": "assistant",
@@ -285,7 +208,7 @@ if prompt:
                                 "content": tool_output
                             })
 
-                    status.update(label="Формирую финальный экспертный ответ...", state="running")
+                    status.update(label="Формирую финальный ответ...", state="running")
                     
                     second_response = client.chat.completions.create(
                         model=model_choice,
@@ -301,6 +224,9 @@ if prompt:
 
             status.update(label="Готово!", state="complete", expanded=False)
 
+        st.markdown(final_reply)
+        messages_list.append({"role": "assistant", "content": final_reply})
+        st.rerun()
         st.markdown(final_reply)
         messages_list.append({"role": "assistant", "content": final_reply})
         st.rerun()
