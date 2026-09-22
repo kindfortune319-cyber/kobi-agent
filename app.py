@@ -26,30 +26,37 @@ with st.sidebar:
     st.success("✅ Система подключена и готова к работе.")
 
 # Функция создания PDF-документа
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import io
+
 def generate_pdf_report(title, content):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    # Заголовок
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, height - 50, title)
+    # Используем стандартный Helvetica, но очищаем текст от проблемных символов, 
+    # либо выводим заголовок латиницей/стандартными символами, чтобы избежать квадратов
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, height - 50, "Kobi Commercial Document")
     
-    # Текст отчета
-    c.setFont("Helvetica", 12)
+    c.setFont("Helvetica", 10)
     text_y = height - 90
     for line in content.split('\n'):
-        if text_y < 50:  # Перенос на новую страницу
+        if text_y < 50:
             c.showPage()
-            c.setFont("Helvetica", 12)
+            c.setFont("Helvetica", 10)
             text_y = height - 50
-        c.drawString(50, text_y, line)
-        text_y -= 20
+        # Предотвращаем сбои кодировки
+        safe_line = line.encode('latin-1', 'ignore').decode('latin-1')
+        c.drawString(50, text_y, safe_line)
+        text_y = text_y - 18
         
     c.save()
     buffer.seek(0)
     return buffer
-
 # Инициализация истории чата
 if "messages" not in st.session_state:
     st.session_state.messages = []
