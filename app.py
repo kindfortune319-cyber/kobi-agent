@@ -57,29 +57,37 @@ def transliterate(text):
 
 import urllib.request
 
+import urllib.request
+import zipfile
+
 def generate_pdf_report(title, content):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    font_path = "DejaVuSans.ttf"
+    font_path = "arial.ttf"
     font_registered = False
     
     try:
-        # Если файла шрифта нет, скачиваем его автоматически при генерации
+        # Если шрифта нет, пробуем распаковать из Arial.zip или скачать автоматически
         if not os.path.exists(font_path):
-            url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
-            urllib.request.urlretrieve(url, font_path)
-            
+            if os.path.exists("Arial.zip"):
+                with zipfile.ZipFile("Arial.zip", 'r') as zip_ref:
+                    zip_ref.extractall(".")
+            else:
+                # Если и архива нет, скачиваем шрифт за секунду из интернета
+                url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+                urllib.request.urlretrieve(url, font_path)
+                
         if os.path.exists(font_path):
-            pdfmetrics.registerFont(TTFont('DejaVu', font_path))
+            pdfmetrics.registerFont(TTFont('RussianFont', font_path))
             font_registered = True
     except Exception as e:
-        print(f"Ошибка загрузки шрифта: {e}")
+        print(f"Ошибка шрифта: {e}")
         
     # Заголовок
     if font_registered:
-        c.setFont("DejaVu", 16)
+        c.setFont("RussianFont", 16)
         c.drawString(50, height - 50, title)
     else:
         c.setFont("Helvetica-Bold", 16)
@@ -96,7 +104,7 @@ def generate_pdf_report(title, content):
             
         if line.strip():
             if font_registered:
-                c.setFont("DejaVu", 10)
+                c.setFont("RussianFont", 10)
                 c.drawString(50, text_y, line.strip()[:90])
             else:
                 c.setFont("Helvetica", 10)
