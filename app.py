@@ -2,11 +2,10 @@ import os
 import json
 import io
 import re
-import urllib.request
 import streamlit as st
 import pandas as pd
 from openai import OpenAI
-from fpdf import FPDF
+from docx import Document
 
 # Настройка страницы
 st.set_page_config(page_title="Kobi — Коммерческий AI Агент", page_icon="🤖", layout="wide")
@@ -17,17 +16,6 @@ st.caption("Профессиональный мультимодельный ас
 # ЖЕСТКО ЗАШИТЫЙ КЛЮЧ ИЗ ОБЛАЧНЫХ СЕКРЕТОВ
 MASTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
 
-# ГАРАНТИРОВАННАЯ ЗАГРУЗКА ШРИФТА С USER-AGENT (чтобы сервер не блокировал)
-FONT_PATH = "DejaVuSans.ttf"
-if not os.path.exists(FONT_PATH):
-    try:
-        url = "https://cdn.jsdelivr.net/gh/dejavu-fonts/dejavu-fonts@master/ttf/DejaVuSans.ttf"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response, open(FONT_PATH, 'wb') as out_file:
-            out_file.write(response.read())
-    except Exception as e:
-        print(f"Ошибка загрузки шрифта: {e}")
-
 with st.sidebar:
     st.header("⚙️ Панель управления")
     model_choice = st.selectbox(
@@ -37,41 +25,21 @@ with st.sidebar:
     st.markdown("---")
     st.success("✅ Система подключена и готова к работе.")
 
-def generate_pdf_report(title, content):
-    pdf = FPDF()
-    pdf.add_page()
+def generate_word_report(title, content):
+    doc = Document()
+    doc.add_heading(title, level=1)
     
-    # Подключаем юникодный шрифт
-    if os.path.exists(FONT_PATH):
-        pdf.add_font("DejaVu", fname=FONT_PATH)
-        pdf.set_font("DejaVu", size=16)
-    else:
-        pdf.set_font("Helvetica", size=16)
-
-    # Заголовок
-    pdf.cell(0, 10, txt=title, ln=True)
-    pdf.ln(5)
-
-    # Текст отчета
-    if os.path.exists(FONT_PATH):
-        pdf.set_font("DejaVu", size=10)
-    else:
-        pdf.set_font("Helvetica", size=10)
-
     clean_content = re.sub(r'[*#_`]', '', content)
-    
     for line in clean_content.split('\n'):
         if line.strip():
-            pdf.multi_cell(0, 8, txt=line.strip())
+            doc.add_paragraph(line.strip())
         else:
-            pdf.ln(4)
-
-    # Возвращаем байты PDF
-    pdf_output = pdf.output(dest='S')
-    if isinstance(pdf_output, str):
-        pdf_output = pdf_output.encode('latin1')
-    
-    return io.BytesIO(pdf_output)
+            doc.add_paragraph() # Пустая строка для отступа
+            
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 # Инициализация истории чата
 if "messages" not in st.session_state:
@@ -84,7 +52,11 @@ for message in st.session_state.messages:
         if "file_path" in message and os.path.exists(message["file_path"]):
             with open(message["file_path"], "rb") as f:
                 file_name = os.path.basename(message['file_path'])
-                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_name.endswith(".xlsx") else "application/pdf"
+                if file_name.endswith(".xlsx"):
+                    mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                else:
+                    mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                
                 st.download_button(
                     label=f"📥 Скачать файл: {file_name}",
                     data=f,
@@ -94,7 +66,7 @@ for message in st.session_state.messages:
                 )
 
 # Обработка ввода пользователя
-if prompt := st.chat_input("Какую задачу нужно решить? (например: 'Сделай смету' или 'Напиши КП')"):
+if prompt := st.chat_input("Какую задачу нужно решить? (например: 'Напиши сочинение про природу' или 'Сделай смету')"):
     if not MASTER_API_KEY or MASTER_API_KEY.startswith("sk-or-v1-..."):
         st.error("Пожалуйста, укажи свой реальный OpenRouter API-ключ.")
         st.stop()
@@ -115,7 +87,7 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
                 "Ты — автономный коммерческий агент Kobi. Твоя задача — решать бизнес-задачи.\n"
                 "СТРОГОЕ ПРАВИЛО: Каждый ответ ты ОБЯЗАН начинать с одного из тегов в самом начале:\n"
                 "1. [EXCEL] — если пользователь просит таблицу, смету, расчеты. В конце добавь JSON блок.\n"
-                "2. [PDF] — ЕСЛИ ПОЛЬЗОВАТЕЛЬ ПРОСИТ ДОКУМЕНТ, КП, ДОГОВОР ИЛИ ОТЧЕТ. Весь текст после тега [PDF] пойдет в PDF-документ.\n"
+                "2. [PDF] — ЕСЛИ ПОЛЬЗОВАТЕЛЬ ПРОСИТ ДОКУМЕНТ, СОЧИНЕНИЕ, КП ИЛИ ОТЧЕТ. Весь текст после тега [PDF] пойдет в Word-документ.\n"
                 "3. [TEXT] — для обычных ответов на вопросы.\n"
                 "НИКОГДА не выводи исходный код Python."
             )
@@ -131,7 +103,7 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
             full_reply = response.choices[0].message.content
             
             # Страховка на случай, если модель забыла тег, но пользователь просил документ
-            if "[PDF]" not in full_reply and any(word in prompt.lower() for word in ["pdf", "предложение", "отчет", "документ", "смет", "сочинение"]):
+            if "[PDF]" not in full_reply and any(word in prompt.lower() for word in ["pdf", "файл", "сочинение", "предложение", "отчет", "документ", "смет"]):
                 full_reply = "[PDF]\n" + full_reply
 
             skill_tag = "[TEXT]"
@@ -166,11 +138,11 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
                 )
                 df.to_excel(file_path, index=False)
             elif skill_tag == "[PDF]":
-                status.update(label="Генерирую официальный PDF-документ...", state="running")
-                file_path = "Kobi_Commercial_Offer.pdf"
-                pdf_buffer = generate_pdf_report("Commercial Document", reply_text)
+                status.update(label="Генерация Word-документа...", state="running")
+                file_path = "Kobi_Document.docx"
+                word_buffer = generate_word_report("Документ от Kobi AI", reply_text)
                 with open(file_path, "wb") as f:
-                    f.write(pdf_buffer.getbuffer())
+                    f.write(word_buffer.getbuffer())
 
             status.update(label="Задача успешно выполнена!", state="complete", expanded=False)
 
@@ -178,7 +150,7 @@ if prompt := st.chat_input("Какую задачу нужно решить? (н
         
         if file_path and os.path.exists(file_path):
             file_name = os.path.basename(file_path)
-            mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_name.endswith(".xlsx") else "application/pdf"
+            mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_name.endswith(".xlsx") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             with open(file_path, "rb") as f:
                 st.download_button(
                     label=f"📥 Скачать готовый файл: {file_name}",
